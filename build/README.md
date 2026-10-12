@@ -12,11 +12,12 @@ fact and link is computed from the source at the release tag `v1.1.0`.
 |---|---|
 | `build.py` | multi-page generator: facts and assertions, chrome (top bar, package switcher, breadcrumbs), all pages and decks, font subsetting |
 | `content.py` | the 12 first-edition sections (now spread over the hub and package pages) |
-| `deep_agent.py`, `deep_ai.py` | agent-core and pi-ai deep-dive content |
+| `deep_agent.py`, `deep_ai.py`, `deep_ca.py`, `deep_tui.py` | agent-core, pi-ai, coding-agent and tui deep-dive content |
 | `pkgmeta.py` | package registry: status, grouping, template; the facts come from package.json |
 | `svgkit.py`, `figkit.py` | diagram toolkit, plus a strict lint for overlaps, crossings and overflow |
 | `figs.py`, `figs2.py` | first-edition diagrams |
 | `figs3.py`, `figs4.py` | agent-core and pi-ai diagrams |
+| `figs5.py`, `figs6.py` | coding-agent (`ca_*`) and tui (`tui_*`) diagrams; facts parsed from the v1.1.0 source |
 | `slides.py` | deck renderer, used for the main deck and the per-package decks |
 | `shoot2.py` | link check plus a headless Chromium matrix (light/dark × 1440/1920/390 × zh/EN) |
 | `preview.py` | renders single diagrams |

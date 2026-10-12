@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------- package registry + version check
-import pkgmeta, deep_agent, deep_ai  # noqa
+import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui  # noqa
 PK = pkgmeta.load()
 PBY = {p['slug']: p for p in PK}
 assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
@@ -66,6 +66,23 @@ CAPTION = {
  'ai_anthropic': ('Anthropic SSE → 统一事件、停止原因与 thinking 配置', 'Anthropic SSE → unified events, stop reasons and thinking'),
  'ai_budget': ('思考等级、maxTokens 推导与成本公式', 'Thinking levels, maxTokens derivation and the cost formula'),
  'ai_oneshot': ('generateImages() 与 classify()', 'generateImages() and classify()'),
+ 'ca_arch': ('四个入口、core/ 的主要模块（标签为行数）与依赖', 'Four entry points, the main core/ modules (tags = lines) and dependencies'),
+ 'ca_startup': ('main() 从参数到运行模式的 14 步', 'The 14 steps in main(), from arguments to run mode'),
+ 'ca_session': ('AgentSession 为 Agent 的每个钩子安装的实现，以及运行后的外层循环', 'What AgentSession installs into each Agent hook, and the post-run outer loop'),
+ 'ca_runtime': ('替换会话的 6 步与取消分支', 'The six steps of replacing a session, and the cancel branch'),
+ 'ca_tools': ('8 个内置工具、截断上限与可替换的 Operations', 'The eight built-in tools, truncation limits and swappable Operations'),
+ 'ca_jsonl': ('会话文件的位置、内容、条目类型与读写路径', 'Session file location, contents, entry types, and the write and read paths'),
+ 'ca_extapi': ('pi 对象的方法分组、41 种事件与 ctx', 'Method groups on pi, the 41 events, and ctx'),
+ 'ca_rpc': ('stdin / stdout 上的五种消息与全部 RPC 命令', 'The five message kinds on stdin / stdout and every RPC command'),
+ 'ca_config': ('设置合并、资源加载流程与 system prompt 分段', 'Settings merge, the resource load pipeline and system prompt sections'),
+ 'tui_arch': ('四组模块与 components/（标签为行数）', 'Four module groups and components/ (tags = lines)'),
+ 'tui_component': ('接口、一棵组件树示例、每帧的约定与内置组件', 'Interfaces, an example tree, the per-frame contract and built-in components'),
+ 'tui_render': ('渲染调度、帧准备与 regular 屏幕的 7 个判断', 'Render scheduling, frame preparation and the regular screen\'s seven checks'),
+ 'tui_screens': ('regular 与 fullscreen 的对比及备用屏的一帧', 'Regular vs fullscreen, and one alternate-screen frame'),
+ 'tui_input': ('从 stdin 字节到组件的 8 步输入分发', 'Eight-step input dispatch from stdin bytes to the component'),
+ 'tui_editor': ('Editor 的状态、按键分支顺序与自动补全', 'Editor state, key-branch order and autocomplete'),
+ 'tui_overlay': ('覆盖层选项、9 个锚点、合成步骤与焦点栈', 'Overlay options, nine anchors, compositing and the focus stack'),
+ 'tui_terminal': ('启动协商、输出序列与按终端识别的能力', 'Start-up negotiation, output sequences and per-terminal capabilities'),
 }
 assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
 

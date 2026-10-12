@@ -41,6 +41,101 @@ def api_section_ai(i, p):
 {exports_paths_table(p, AI_EXPORT_NOTES)}
 </section>'''
 
+def index_exports_table(index_path, base):
+    """Group the named re-exports in an index.ts by source module (value vs type)."""
+    src = read(index_path)
+    mods = {}
+    for m in re.finditer(r'export\s+(type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"', src):
+        alltype, names, mod = m.group(1), m.group(2), m.group(3)
+        d = mods.setdefault(mod, ([], []))
+        for n in names.split(','):
+            n = n.strip()
+            if not n or n.startswith('//'): continue
+            n = re.sub(r'\s*//.*', '', n)
+            is_t = bool(alltype) or n.startswith('type ')
+            n = n.replace('type ', '').split(' as ')[-1].strip()
+            (d[1] if is_t else d[0]).append(n)
+    for m in re.finditer(r'export \* from "([^"]+)"', src):
+        mods.setdefault(m.group(1), (['*'], []))
+    rows = []
+    def cell(xs, cap=14):
+        if not xs: return '—'
+        show = ' '.join(f'<code>{esc(x)}</code>' for x in xs[:cap])
+        return show + (f' <span class="note">+{len(xs) - cap}</span>' if len(xs) > cap else '')
+    for mod, (v, t) in mods.items():
+        if mod.startswith('.'):
+            path = base + mod[2:]
+            first = f'{flink(path)}'
+        else:
+            first = f'<code>{esc(mod)}</code>'
+        rows.append(f'<tr><td>{first}</td><td>{cell(v)}</td><td class="col-role">{cell(t, 10)}</td></tr>')
+    nv = sum(len(v) for v, _ in mods.values()); nt = sum(len(t) for _, t in mods.values())
+    tbl = (f'<details class="cl-pkg"><summary><b>{T((f"展开全部 {len(mods)} 个来源模块", f"Show all {len(mods)} source modules"))}</b><span class="cnt"><span>{nv} values</span><span>{nt} types</span></span></summary><div class="body"><div class="tbl"><table><thead><tr><th>{T(("来源模块", "Source module"))}</th><th>{T(("值导出", "Value exports"))}</th><th class="col-role">{T(("类型导出", "Type exports"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div></div></details>')
+    return tbl, len(mods), nv, nt
+
+def key_exports_table(index_path, base, picks):
+    """picks: [(module, [names], (zh, en))] — verified against the index.ts re-exports."""
+    src = read(index_path); rows = []
+    for mod, names, note in picks:
+        for n in names: assert re.search(r'\b' + re.escape(n) + r'\b', src), (index_path, n)
+        path = base + mod
+        links = ' '.join(f'<a href="{gh(path, line_of(path, rf"^export (?:declare )?(?:abstract )?(?:async )?(?:function|class|const|interface|type) {n}\b"))}" target="_blank" rel="noopener"><code>{esc(n)}</code></a>' for n in names)
+        rows.append(f'<tr><td>{flink(path)}</td><td>{links}</td><td class="col-role">{T(note)}</td></tr>')
+    return f'<div class="tbl"><table><thead><tr><th>{T(("模块", "Module"))}</th><th>{T(("常用导出", "Key exports"))}</th><th class="col-role">{T(("用途", "Use"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+
+CA_KEY = [('core/sdk.ts', ['createAgentSession'], ('一次性建好会话', 'build a session in one call')),
+          ('core/agent-session-runtime.ts', ['AgentSessionRuntime', 'createAgentSessionRuntime'], ('可替换会话的宿主', 'the host that swaps sessions')),
+          ('core/agent-session.ts', ['AgentSession'], ('一次会话', 'one session')),
+          ('core/session-manager.ts', ['SessionManager'], ('JSONL 会话树', 'the JSONL session tree')),
+          ('core/settings-manager.ts', ['SettingsManager'], ('两层设置', 'two-layer settings')),
+          ('core/resource-loader.ts', ['DefaultResourceLoader'], ('扩展 · 技能 · 提示 · 主题', 'extensions · skills · prompts · themes')),
+          ('core/tools/index.ts', ['createCodingTools', 'createReadOnlyTools'], ('内置工具', 'built-in tools')),
+          ('modes/interactive/interactive-mode.ts', ['InteractiveMode'], ('交互界面', 'the interactive UI')),
+          ('modes/rpc/rpc-client.ts', ['RpcClient'], ('RPC 客户端', 'RPC client'))]
+TUI_KEY = [('tui.ts', ['Container', 'CURSOR_MARKER'], ('组件模型', 'component model')),
+           ('tui-main-screen.ts', ['TuiMainScreen'], ('regular 屏幕', 'regular screen')),
+           ('tui-alt-screen.ts', ['TuiAltScreen'], ('fullscreen 屏幕', 'fullscreen screen')),
+           ('terminal.ts', ['ProcessTerminal'], ('真实终端', 'the real terminal')),
+           ('components/editor.ts', ['Editor'], ('多行编辑器', 'multi-line editor')),
+           ('autocomplete.ts', ['CombinedAutocompleteProvider'], ('/ · @ · 路径补全', '/ · @ · path completion')),
+           ('keys.ts', ['matchesKey', 'parseKey'], ('按键识别', 'key recognition')),
+           ('keybindings.ts', ['KeybindingsManager', 'getKeybindings'], ('键位', 'bindings')),
+           ('utils.ts', ['visibleWidth', 'truncateToWidth'], ('宽度工具', 'width helpers'))]
+
+CA_EXPORT_NOTES = {
+ '.': ('SDK：createAgentSession、AgentSessionRuntime、SessionManager、工具、扩展类型、主题与组件', 'SDK: createAgentSession, AgentSessionRuntime, SessionManager, tools, extension types, theme and components'),
+ './rpc-entry': ('以 RPC 模式启动（等同 pi --mode rpc）', 'start in RPC mode (same as pi --mode rpc)'),
+ './client': ('源码入口：客户端（仓库内使用）', 'source entry: client (used inside the repo)'),
+ './experimental/plugin': ('源码入口：实验性插件 API', 'source entry: experimental plugin API'),
+}
+def api_section_ca(i, p):
+    j = json.loads(read('packages/coding-agent/package.json'))
+    ln = line_of('packages/coding-agent/package.json', r'"exports"')
+    rows = []
+    for k, v in j['exports'].items():
+        if k == './package.json': continue
+        tgt = v.get('import') or v.get('source') if isinstance(v, dict) else v
+        rows.append(f'<tr><td><code>{esc(p["npm"] + k[1:])}</code></td><td class="sym"><code>{esc(str(tgt))}</code></td><td class="col-role">{T(CA_EXPORT_NOTES.get(k, ("", "")))}</td></tr>')
+    bins = ' '.join(f'`{k}` → `{v}`' for k, v in j.get('bin', {}).items())
+    tbl, nm, nv, nt = index_exports_table('packages/coding-agent/src/index.ts', 'packages/coding-agent/src/')
+    return sec_open(i, 'api', 'coding', ('公共 API', 'Public API')) + f'''
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"一个命令（{bins}）加 {len(rows)} 个导入路径。SDK 根入口从 {nm} 个模块重新导出 {nv} 个值和 {nt} 个类型；最常用的是 `createAgentSession`、`createAgentSessionRuntime`、`SessionManager`、`SettingsManager`、`createCodingTools` 和扩展类型。", f"One command ({bins}) plus {len(rows)} import paths. The SDK root re-exports {nv} values and {nt} types from {nm} modules; the most used are `createAgentSession`, `createAgentSessionRuntime`, `SessionManager`, `SettingsManager`, `createCodingTools` and the extension types."))}</p>
+<div class="tbl"><table><thead><tr><th>{T(("导入路径", "Import path"))}</th><th>{T(("目标", "Target"))}</th><th class="col-role">{T(("说明", "Notes"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>
+<p class="note">{flink("packages/coding-agent/package.json", ln, "package.json · exports")}</p>
+<h3 class="subh">{T(("常用导出", "Key exports"))}</h3>{key_exports_table("packages/coding-agent/src/index.ts", "packages/coding-agent/src/", CA_KEY)}
+<h3 class="subh">{T(("根入口 index.ts 的全部导出（按来源模块）", "Every root index.ts export, by source module"))}</h3>{tbl}
+<p class="note">{T(("由构建脚本解析 `export { … } from` 语句生成；每个模块最多列出 14 个值、10 个类型。", "Generated by parsing the `export { … } from` statements at build time; at most 14 values and 10 types are listed per module."))}</p>
+</section>'''
+
+def api_section_tui(i, p):
+    tbl, nm, nv, nt = index_exports_table('packages/tui/src/index.ts', 'packages/tui/src/')
+    return sec_open(i, 'api', 'tui', ('公共 API', 'Public API')) + f'''
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"package.json 没有 exports 字段，只有一个入口 `dist/index.js`。`src/index.ts` 从 {nm} 个模块重新导出 {nv} 个值和 {nt} 个类型：组件、TUI 与两种屏幕、终端、按键与键位、编辑器接口、宽度工具和图片。", f"package.json has no exports map — one entry, `dist/index.js`. `src/index.ts` re-exports {nv} values and {nt} types from {nm} modules: components, the TUI and both screens, the terminal, keys and bindings, the editor interface, width helpers and images."))}</p>
+<h3 class="subh">{T(("常用导出", "Key exports"))}</h3>{key_exports_table("packages/tui/src/index.ts", "packages/tui/src/", TUI_KEY)}
+<h3 class="subh">{T(("index.ts 的全部导出（按来源模块）", "Every index.ts export, by source module"))}</h3>{tbl}
+<p class="note">{T(("由构建脚本解析 `export { … } from` 语句生成。", "Generated by parsing the `export { … } from` statements at build time."))}</p>
+</section>'''
+
 def ext_section(i, layer, items):
     cards = ''.join(f'<div><b><code>{esc(k)}</code></b>{T(d)}</div>' for k, d in items)
     return sec_open(i, 'ext', layer, ('扩展点', 'Extension points')) + f'<div class="ext-list">{cards}</div></section>'
@@ -209,7 +304,7 @@ def build_hub(n_slides):
     hero = f'''<section class="hero" id="top"><div class="wrap"><div>
 <a class="eyebrow" href="{GH}/releases/tag/{REF}" target="_blank" rel="noopener"><b>{REF}</b>{T(SUBTITLE)} · {COMMIT_DATE[:10]}</a>
 <h1>{T(("图解 <grad>Pi Agent</grad>", "<grad>Pi Agent</grad>,<br>Illustrated"), cls="h1")}</h1>
-<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；每个包有自己的子页面——`agent-core` 与 `pi-ai` 已完成深挖。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture; every package has its own page — `agent-core` and `pi-ai` are fully covered. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
+<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；每个包有自己的子页面——`coding-agent`、`agent-core`、`pi-ai` 与 `tui` 四个核心包已完成深挖。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture; every package has its own page — the four core packages `coding-agent`, `agent-core`, `pi-ai` and `tui` are fully covered. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
 <div class="cta"><a class="btn primary" href="#pkgs">{T(("浏览 14 个包", "Browse the 14 packages"))} →</a><a class="btn" href="{P}slides.html">{ICON["play"].replace("<svg", "<svg width=15 height=15")}{T((f"演示模式 · {n_slides} 页", f"Presentation · {n_slides} slides"))}</a></div>
 <div class="stats">{stats}</div></div>
 {stack}
@@ -225,16 +320,19 @@ def build_roadmap():
     plan = f'''<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"信息架构 = 一个总览页 + 每个包一个子页面，全部使用同一个包模板。当前 {cnt['done']} 个完成、{cnt['partial']} 个部分完成、{cnt['planned']} 个计划中（已有自动生成的占位页，链接全部有效）。", f"Information architecture = one overview page + one page per package, all following the same package template. Currently {cnt['done']} done, {cnt['partial']} partial and {cnt['planned']} planned (each already has a generated placeholder page, so every link works)."))}</p>
 <div class="tbl"><table><thead><tr><th>{T(("包", "Package"))}</th><th>npm</th><th>{T(("状态", "Status"))}</th><th class="col-role">{T(("定位", "Role"))}</th></tr></thead><tbody>{rows}</tbody></table></div>'''
     tmpl = f'<p class="note">{T(("每个包页面按以下 9 项组织；完成的包页面全部覆盖，占位页显示进度。", "Every package page is organised by these nine parts; finished pages cover all of them, placeholders show progress."))}</p>' + checklist({k for k, *_ in pkgmeta.TEMPLATE})
-    nxt = [(('第 3 批：coding-agent 深挖', 'Batch 3: coding-agent deep dive'), ('AgentSession 组装、工具实现（read/bash/edit/write…）、设置与 ModelRuntime、RPC 协议；保留已迁移的 4 节。', 'AgentSession assembly, tool implementations (read/bash/edit/write …), settings and ModelRuntime, the RPC protocol; keep the four moved sections.')),
-           (('第 4 批：tui 与 mcp / codemode', 'Batch 4: tui, mcp, codemode'), ('组件模型、按键解析、输入编辑器；MCP 客户端与 OAuth；codemode 沙箱与 worker。', 'Component model, key parsing, the input editor; the MCP client and OAuth; the codemode sandbox and worker.')),
-           (('第 5 批：chord / durable / env', 'Batch 5: chord, durable, env'), ('组合运行时、复制状态与 RPC；持久化会话 / 任务 / 文档；远程执行守护进程。', 'Composition runtime, replicated state and RPC; durable conversations / tasks / documents; the remote execution daemon.')),
-           (('第 6 批：protocol / client / server / telemetry / evals', 'Batch 6: protocol, client, server, telemetry, evals'), ('CBOR 帧协议与远程会话；遥测契约；评测套件。', 'The CBOR framing protocol and remote sessions; telemetry contracts; evaluation suites.'))]
+    nxt = [(('第 5 批：mcp / codemode', 'Batch 5: mcp, codemode'), ('MCP 客户端、传输与 OAuth；codemode 沙箱、worker 与非 LLM 模型。', 'The MCP client, transports and OAuth; the codemode sandbox, worker and non-LLM models.')),
+           (('第 6 批：chord / durable / env', 'Batch 6: chord, durable, env'), ('组合运行时、复制状态与 RPC；持久化会话 / 任务 / 文档；远程执行守护进程。', 'Composition runtime, replicated state and RPC; durable conversations / tasks / documents; the remote execution daemon.')),
+           (('第 7 批：protocol / client / server / telemetry / evals', 'Batch 7: protocol, client, server, telemetry, evals'), ('CBOR 帧协议与远程会话；遥测契约；评测套件。', 'The CBOR framing protocol and remote sessions; telemetry contracts; evaluation suites.'))]
     nxt_html = '<ol class="prose">' + ''.join(f'<li><b>{T(a)}</b> — {T(b)}</li>' for a, b in nxt) + '</ol>'
     # site changelog
     site_cl = [
+        (('本次更新：coding-agent 与 tui 完成', 'This update: coding-agent and tui done'), [(f'coding-agent 深挖：新增 9 张图（模块、CLI 启动、AgentSession 装配、会话替换、内置工具、JSONL 格式、扩展 API、RPC 协议、设置与资源），并保留第一版的 4 节；全站合计 {len(FIGS)} 张。', f'coding-agent deep dive: 9 new diagrams (modules, CLI start-up, AgentSession wiring, session replacement, built-in tools, the JSONL format, the extension API, the RPC protocol, settings and resources), keeping the four first-edition sections; {len(FIGS)} diagrams site-wide.'),
+                                     ('tui 深挖：新增 8 张图（模块、组件模型、差分渲染、两种屏幕、输入与按键、编辑器与补全、覆盖层、终端能力）。', 'tui deep dive: 8 new diagrams (modules, the component model, differential rendering, the two screens, input and keys, the editor and autocomplete, overlays, terminal capabilities).'),
+                                     ('两个包各有 10 页的演示文稿；两个包的公共 API 表按 index.ts 的导出自动生成。', 'A 10-slide deck for each package; both public-API tables are generated from the index.ts exports.'),
+                                     ('修复：中文幻灯片页脚显示英文站名。', 'Fix: Chinese slides showed the English site name in the footer.')]),
         (('信息架构', 'Information architecture'), [('单页 → 总览 + 14 个包子页面 + 路线图；全站顶部导航带包切换器，子页面有面包屑。', 'Single page → overview + 14 package pages + roadmap; a global top nav with a package switcher, breadcrumbs on sub-pages.'),
                                                    ('第一版 12 节全部保留：4 节留在总览，8 节迁到所属包页面；旧锚点自动跳转。', 'All 12 first-edition sections kept: 4 stay on the overview, 8 moved to their package pages; old anchors redirect.')]),
-        (('新内容', 'New content'), [(f'agent-core 与 pi-ai 深挖：新增 16 张手绘图（合计 {len(FIGS)} 张），公共 API、扩展点、测试与交叉链接。', f'agent-core and pi-ai deep dives: 16 new hand-laid diagrams ({len(FIGS)} in total), plus public API, extension points, tests and cross-links.'),
+        (('新内容', 'New content'), [('agent-core 与 pi-ai 深挖：新增 16 张手绘图（当时合计 28 张），公共 API、扩展点、测试与交叉链接。', 'agent-core and pi-ai deep dives: 16 new hand-laid diagrams (28 in total at the time), plus public API, extension points, tests and cross-links.'),
                                      ('两个包各自的演示文稿；12 个包的自动占位页。', 'A slide deck for each of the two packages; generated placeholder pages for 12 packages.')]),
         (('源码版本', 'Source version'), [(f'分析对象从开发中的提交 `4130bd5` 改为发布标签 `{REF}`（`{SHORT}`，{COMMIT_DATE[:10]}）；所有 GitHub 链接改为指向该标签，所有行号重新计算。', f'The analysed source moved from the in-progress commit `4130bd5` to the release tag `{REF}` (`{SHORT}`, {COMMIT_DATE[:10]}); every GitHub link now targets the tag and every line number was recomputed.'),
                                           ('构建时断言：所有 14 个包的 package.json 版本均为 1.1.0；12 项核心计数（provider、API、事件、RPC 命令等）在标签上与第一版一致。', 'Build-time assertions: all 14 package.json versions are 1.1.0; the 12 core counts (providers, APIs, events, RPC commands …) are unchanged at the tag.')]),
@@ -277,7 +375,7 @@ def render_deck(relpath, slides=None, **kw):
     depth = relpath.count('/'); prefix = '../' * depth
     body = render_slides(T=T, md=md, FACTS=FACTS, STATS=STATS, SRC_LOC=SRC_LOC, TEST_LOC=TEST_LOC, SHORT=SHORT, SHA=SHA, GH=GH,
                          COMMIT_DATE=COMMIT_DATE, ICON=ICON, FIGS=FIGS, DEFS=DEFS, PKG_LAYER=PKG_LAYER, LAYER_NAME=LAYER_NAME, fmt=fmt,
-                         slides=slides, prefix=prefix, foot=f'{SITE[1]} · Pi {REF}', ref_url=f'{GH}/tree/{REF}', ref_label=f'github.com/earendil-works/pi · {REF}',
+                         slides=slides, prefix=prefix, foot=T((f'{SITE[0]} · Pi {REF}', f'{SITE[1]} · Pi {REF}')), ref_url=f'{GH}/tree/{REF}', ref_label=f'github.com/earendil-works/pi · {REF}',
                          eyebrow=f'<b>{REF}</b>{T(SUBTITLE)} · {COMMIT_DATE[:10]}', **kw)
     i = body.index('<body'); i = body.index('>', i) + 1
     body = body[:i] + DEFS + body[i:]
@@ -330,14 +428,20 @@ def main():
     (OUT / 'assets/stats.json').write_text(json.dumps(dict(site=SITE[1], version=VERSION, ref=REF, commit=SHA, commit_date=COMMIT_DATE, facts=FACTS, packages=STATS,
                                                          package_status={p['slug']: p['status'] for p in PK}, extension_events=ext_events,
                                                          rpc_commands=rpc_cmds, tools=tools, session_entry_types=entry_types), indent=1))
-    n_ac = pkg_deck('agent-core', deep_agent); n_ai = pkg_deck('pi-ai', deep_ai)
+    n_ac = pkg_deck('agent-core', deep_agent); n_ai = pkg_deck('pi-ai', deep_ai); n_ca = pkg_deck('coding-agent', deep_ca); n_tui = pkg_deck('tui', deep_tui)
     build_deep('agent-core', deep_agent, [('sec', 'ac-arch'), ('api', 'api'), ('sec', 'ac-lifecycle'), ('v1', 'loop'), ('sec', 'ac-turn'), ('v1', 'toolexec'),
                ('sec', 'ac-parallel'), ('sec', 'ac-events'), ('sec', 'ac-queues'), ('sec', 'ac-proxy'), ('sec', 'ac-types'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
                api_section_agent, ('4 个测试文件覆盖循环（钩子顺序、队列、并行工具、截断）、Agent 生命周期、端到端与代理流。', 'Four test files cover the loop (hook order, queues, parallel tools, truncation), the Agent lifecycle, end-to-end runs and the proxy stream.'), n_ac)
     build_deep('pi-ai', deep_ai, [('sec', 'ai-entry'), ('sec', 'ai-registry'), ('api', 'api'), ('sec', 'ai-pipeline'), ('v1', 'providers'), ('sec', 'ai-events'),
                ('sec', 'ai-convert'), ('sec', 'ai-anthropic'), ('sec', 'ai-budget'), ('sec', 'ai-oneshot'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
                api_section_ai, ('测试以 provider 为单位组织：每个 API 实现都有流式、工具调用、停止原因与错误路径的测试，另有跨 provider 交接与成本计算测试。', 'Tests are organised per provider: every API implementation has tests for streaming, tool calls, stop reasons and error paths, plus cross-provider handoff and cost tests.'), n_ai)
-    for slug in PARTIAL: build_partial(slug)
+    build_deep('coding-agent', deep_ca, [('sec', 'ca-arch'), ('api', 'api'), ('sec', 'ca-startup'), ('v1', 'modes'), ('sec', 'ca-session'), ('sec', 'ca-runtime'),
+               ('sec', 'ca-tools'), ('sec', 'ca-jsonl'), ('v1', 'session'), ('v1', 'compaction'), ('sec', 'ca-extapi'), ('v1', 'extensions'), ('sec', 'ca-rpc'), ('sec', 'ca-config'),
+               ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_ca, ('测试最多的是会话与交互：AgentSession（重试、压缩、排队）、SessionManager 的树与迁移、扩展事件、RPC 协议与各个工具都有独立测试文件。', 'Most tests cover sessions and interaction: AgentSession (retry, compaction, queues), the SessionManager tree and migrations, extension events, the RPC protocol and each tool have their own test files.'), n_ca)
+    build_deep('tui', deep_tui, [('sec', 'tui-arch'), ('api', 'api'), ('sec', 'tui-component'), ('v1', 'tui'), ('sec', 'tui-render'), ('sec', 'tui-screens'),
+               ('sec', 'tui-input'), ('sec', 'tui-editor'), ('sec', 'tui-overlay'), ('sec', 'tui-terminal'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_tui, ('测试集中在按键解析、编辑器行为、差分渲染与覆盖层布局；大部分用虚拟终端断言实际输出的转义序列和屏幕内容。', 'Tests concentrate on key parsing, editor behaviour, differential rendering and overlay layout; most assert the actual escape sequences and screen contents on a virtual terminal.'), n_tui)
     for p in PK:
         if p['status'] == 'planned': build_stub(p['slug'])
     render_deck('slides.html')

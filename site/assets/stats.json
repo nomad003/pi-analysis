@@ -132,8 +132,8 @@
  "package_status": {
   "agent-core": "done",
   "pi-ai": "done",
-  "coding-agent": "partial",
-  "tui": "partial",
+  "coding-agent": "done",
+  "tui": "done",
   "mcp": "planned",
   "codemode": "planned",
   "telemetry": "planned",

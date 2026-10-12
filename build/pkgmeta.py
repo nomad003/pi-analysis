@@ -8,8 +8,8 @@ SRC = Path('/workspace/pi-src')
 PKGS = [
  ('agent-core',   'agent',        'agent',  'done',    '通用 Agent：状态、事件循环、工具执行与钩子', None, 'core'),
  ('pi-ai',        'ai',           'ai',     'done',    '统一的 LLM API：模型目录、认证、42 个 provider、事件流', None, 'core'),
- ('coding-agent', 'coding-agent', 'coding', 'partial', '编码智能体 CLI：工具、会话树、压缩、扩展与运行模式', None, 'core'),
- ('tui',          'tui',          'tui',    'partial', '差分渲染的终端 UI 库', None, 'core'),
+ ('coding-agent', 'coding-agent', 'coding', 'done',    '编码智能体 CLI：工具、会话树、压缩、扩展与运行模式', None, 'core'),
+ ('tui',          'tui',          'tui',    'done',    '差分渲染的终端 UI 库', None, 'core'),
  ('mcp',          'mcp',          'ext',    'planned', '独立的 Model Context Protocol 客户端', None, 'capabilities'),
  ('codemode',     'codemode',     'ext',    'planned', '沙箱化 JavaScript 执行：唯一能力是调用注入的工具', None, 'capabilities'),
  ('telemetry',    'telemetry',    'infra',  'planned', '与厂商无关的遥测契约与类型化 schema 工具', None, 'capabilities'),

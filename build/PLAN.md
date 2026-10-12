@@ -45,8 +45,8 @@ Statuses:
 |---|---|---|---|---|---|
 | [agent-core](../pi-site/packages/agent-core/index.html) | `@earendil-works/pi-agent-core` | `packages/agent` | **done** | pi-ai | General-purpose agent with transport abstraction, state management, and attachment support |
 | [pi-ai](../pi-site/packages/pi-ai/index.html) | `@earendil-works/pi-ai` | `packages/ai` | **done** | telemetry | Unified LLM API with automatic model discovery and provider configuration |
-| [coding-agent](../pi-site/packages/coding-agent/index.html) | `@earendil-works/pi-coding-agent` | `packages/coding-agent` | **partial** | chord, agent-core, pi-ai, codemode, mcp, tui | Coding agent CLI with read, bash, edit, write tools and session management |
-| [tui](../pi-site/packages/tui/index.html) | `@earendil-works/pi-tui` | `packages/tui` | **partial** | — | Terminal User Interface library with differential rendering for efficient text-based applications |
+| [coding-agent](../pi-site/packages/coding-agent/index.html) | `@earendil-works/pi-coding-agent` | `packages/coding-agent` | **done** | chord, agent-core, pi-ai, codemode, mcp, tui | Coding agent CLI with read, bash, edit, write tools and session management |
+| [tui](../pi-site/packages/tui/index.html) | `@earendil-works/pi-tui` | `packages/tui` | **done** | — | Terminal User Interface library with differential rendering for efficient text-based applications |
 | [mcp](../pi-site/packages/mcp/index.html) | `@earendil-works/pi-mcp` | `packages/mcp` | **planned** | — | Standalone Model Context Protocol client for pi and other applications |
 | [codemode](../pi-site/packages/codemode/index.html) | `@earendil-works/pi-codemode` | `packages/codemode` | **planned** | — | Sandboxed JavaScript execution where the only capability is calling injected tools |
 | [telemetry](../pi-site/packages/telemetry/index.html) | `@earendil-works/pi-telemetry` | `packages/telemetry` | **planned** | — | Vendor-neutral telemetry contracts and typed schema utilities for pi |
@@ -80,7 +80,7 @@ Statuses:
 | session, compaction, extensions, modes | packages/coding-agent |
 | tui | packages/tui |
 
-Every first-edition diagram is kept. There are 12 first-edition diagrams and 16 new ones, 28 in total.
+Every first-edition diagram is kept. There are 12 first-edition diagrams and 33 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui), 45 in total.
 
 ## New diagrams
 
@@ -102,13 +102,33 @@ Every first-edition diagram is kept. There are 12 first-edition diagrams and 16 
   - `ai_anthropic`: SSE to events
   - `ai_budget`: thinking, maxTokens and cost
   - `ai_oneshot`: images and classifiers
+- **coding-agent** (`figs5.py`):
+  - `ca_arch`: entry points, core/ modules with line counts, dependencies
+  - `ca_startup`: the 14 steps of main() and mode dispatch
+  - `ca_session`: what AgentSession installs into each Agent hook; the post-run loop
+  - `ca_runtime`: AgentSessionRuntime session replacement and cancel branch
+  - `ca_tools`: the 8 built-in tools, truncation limits, Operations
+  - `ca_jsonl`: session file location, sample lines, entry types, write/read paths
+  - `ca_extapi`: ExtensionAPI method groups, the 41 events (18 interceptable), ctx surfaces
+  - `ca_rpc`: stdin/stdout message kinds and the 33 RPC commands
+  - `ca_config`: settings merge + trust, ResourceLoader.reload(), system prompt sections
+- **tui** (`figs6.py`):
+  - `tui_arch`: four module groups and components/
+  - `tui_component`: Component/Focusable/Container/TUI, example tree, per-frame contract
+  - `tui_render`: render scheduling, frame prep, TuiMainScreen's seven checks
+  - `tui_screens`: regular vs fullscreen, the alt-screen frame pipeline
+  - `tui_input`: stdin → StdinBuffer → handleTerminalInput (8 steps) → keys/keybindings
+  - `tui_editor`: Editor state, handleInput order, autocomplete
+  - `tui_overlay`: OverlayOptions, 9 anchors, compositing, focus stack
+  - `tui_terminal`: start-up negotiation, OSC outputs, capability table
 
 ## Next batches
 
-1. coding-agent deep dive: AgentSession assembly, tools, settings/ModelRuntime, RPC
-2. tui, mcp, codemode
-3. chord, durable, env
-4. protocol, client, server, telemetry, evals
+Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4).
+
+5. mcp, codemode
+6. chord, durable, env
+7. protocol, client, server, telemetry, evals
 
 To promote a package, add `deep_<pkg>.py` (same schema as `deep_agent.py`) and `figsN.py`, then set the status in `pkgmeta.py`.
 

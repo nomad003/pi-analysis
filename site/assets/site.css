@@ -111,6 +111,7 @@ figure.diagram figcaption .cap{flex:1;min-width:0;overflow:hidden;text-overflow:
 .card{border:1px solid var(--border);border-radius:14px;padding:20px 22px 18px;background:var(--surface)}
 .card h3,.files h3{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);margin:0 0 12px}
 .card h3 svg,.files h3 svg{width:15px;height:15px;color:var(--l)}
+.subh{font-size:12.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3);margin:26px 0 12px}
 .card ul,.card ol{margin:0;padding:0;list-style:none;display:grid;gap:10px}
 .card li{position:relative;padding-left:20px;font-size:15px;line-height:1.68;color:var(--text-2)}
 .card ul li::before{content:"";position:absolute;left:3px;top:.72em;width:6px;height:6px;border-radius:2px;background:var(--l);transform:rotate(45deg)}
