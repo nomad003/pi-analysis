@@ -1,0 +1,750 @@
+#!/usr/bin/env python3
+"""Build /workspace/pi-site from source-grounded content. Every file link is resolved against /workspace/pi-src."""
+import html, json, os, re, shutil, subprocess, sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SRC = Path('/workspace/pi-src')
+OUT = Path(os.environ.get('PI_OUT', '/workspace/pi-site'))
+sys.path.insert(0, str(HERE))
+from content import SECTIONS, GROUPS  # noqa  (first-edition sections)
+from figs import build_all  # noqa
+from svgkit import DEFS  # noqa
+FIGS = build_all()
+for _k, _f in FIGS.items():
+    assert not _f.lint(), (_k, _f.lint())
+from slides import SLIDES  # noqa
+
+# The analysed source is the Pi release tag v1.1.0. Every GitHub link points at the tag.
+VERSION = '1.1.0'
+REF = 'v' + VERSION
+SHA = subprocess.check_output(['git', '-C', str(SRC), 'rev-parse', 'HEAD'], text=True).strip()
+TAG_SHA = subprocess.check_output(['git', '-C', str(SRC), 'rev-parse', REF + '^{commit}'], text=True).strip()
+assert SHA == TAG_SHA, f'/workspace/pi-src must be checked out at {REF} ({TAG_SHA[:9]}), found {SHA[:9]}'
+SHORT = SHA[:7]
+GH = 'https://github.com/earendil-works/pi'
+COMMIT_DATE = subprocess.check_output(['git', '-C', str(SRC), 'log', '-1', '--format=%cI'], text=True).strip()
+SITE = ('图解 Pi Agent', 'Pi Agent, Illustrated')
+SUBTITLE = (f'Pi v{VERSION} 源码分析', f'Analysis of Pi v{VERSION}')
+
+# ---------------------------------------------------------------- facts (computed, then asserted)
+def read(p): return (SRC / p).read_text(errors='ignore')
+
+def line_of(path, pattern):
+    if pattern is None: return None
+    for i, l in enumerate(read(path).splitlines(), 1):
+        if re.search(pattern, l): return i
+    raise SystemExit(f'pattern not found: {path} :: {pattern}')
+
+def gh(path, line=None):
+    kind = 'tree' if (SRC / path).is_dir() else 'blob'
+    if not (SRC / path).exists(): raise SystemExit('missing path ' + path)
+    return f'{GH}/{kind}/{REF}/{path}' + (f'#L{line}' if line else '')
+
+pkgs = sorted(p.name for p in (SRC / 'packages').iterdir() if (p / 'package.json').exists())
+providers = len(re.findall(r'^import \{ \w+Provider \} from "\./', read('packages/ai/src/providers/all.ts'), re.M))
+api = read('packages/coding-agent/src/core/extensions/types.ts')
+api_block = api[api.index('export interface ExtensionAPI'):]
+api_block = api_block[:api_block.index('\n}\n')]
+ext_events = sorted(set(re.findall(r'\bon\(\s*event: "([a-z_]+)"', api_block)))
+rpc = read('packages/coding-agent/src/modes/rpc/rpc-types.ts')
+rpc_block = re.search(r'export type RpcCommand\s*=(.*?);\n\n', rpc, re.S).group(1)
+rpc_cmds = sorted(set(re.findall(r'type: "([a-z_]+)"', rpc_block)))
+tools = re.findall(r'"(\w+)"', re.search(r'export type ToolName = (.*);', read('packages/coding-agent/src/core/tools/index.ts')).group(1))
+ai_events = re.findall(r'type: "([a-z_]+)"', re.search(r'export type AssistantMessageEvent\b(.*?)\n\n', read('packages/ai/src/types.ts'), re.S).group(1))
+entry_types = sorted(set(re.findall(r'^\ttype: "([a-z_]+)";', read('packages/coding-agent/src/core/session-manager.ts'), re.M)) - {'session'})
+known_api = re.findall(r'\| "([a-z-]+)"', re.search(r'export type KnownApi =(.*?);', read('packages/ai/src/types.ts'), re.S).group(1))
+FACTS = dict(apis=len(known_api), packages=len(pkgs), providers=providers, ext_events=len(ext_events), rpc=len(rpc_cmds), tools=len(tools),
+             ai_events=len(ai_events), entries=len(entry_types), modes=4)
+EXPECT = dict(apis=10, packages=14, providers=42, ext_events=41, rpc=33, tools=8, ai_events=12, entries=11, modes=4)
+assert FACTS == EXPECT, (FACTS, EXPECT)
+
+# repo stats (same method as the original analysis)
+def count_stats():
+    out = []
+    for p in pkgs:
+        sf = sl = tf = tl = al = 0
+        root = SRC / 'packages' / p
+        for dp, dns, fns in os.walk(root):
+            dns[:] = [x for x in dns if x not in ('node_modules', 'dist')]
+            for f in fns:
+                if not f.endswith('.ts') or f.endswith('.d.ts'): continue
+                fp = Path(dp) / f; rel = fp.relative_to(root).as_posix(); al += 1
+                n = sum(1 for _ in open(fp, errors='ignore'))
+                if re.match(r'test[^/]*/', rel) or '.test.' in f: tf += 1; tl += n
+                elif rel.startswith('src/'): sf += 1; sl += n
+        out.append(dict(pkg=p, src_files=sf, src_loc=sl, test_files=tf, test_loc=tl, all_ts_files=al))
+    return out
+STATS = count_stats()
+SRC_LOC = sum(s['src_loc'] for s in STATS); TEST_LOC = sum(s['test_loc'] for s in STATS)
+PKG_LAYER = {'coding-agent': 'coding', 'agent': 'agent', 'ai': 'ai', 'tui': 'tui'}
+
+# ---------------------------------------------------------------- package registry + version check
+import pkgmeta, deep_agent, deep_ai  # noqa
+PK = pkgmeta.load()
+PBY = {p['slug']: p for p in PK}
+assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
+STATS_BY = {s['pkg']: s for s in STATS}
+V1 = {s['id']: s for s in SECTIONS}
+
+# ---------------------------------------------------------------- helpers
+def md(s):
+    s = html.escape(s, quote=False)
+    s = re.sub(r'`([^`]+)`', r'<code>\1</code>', s)
+    s = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', s)
+    return s
+
+def T(pair, tag='span', cls=''):
+    zh, en = pair
+    c = (' ' + cls) if cls else ''
+    return f'<{tag} class="zh{c}" lang="zh-CN">{md(zh)}</{tag}><{tag} class="en{c}" lang="en">{md(en)}</{tag}>'
+
+def fmt(n): return f'{n:,}'
+def esc(s): return html.escape(str(s), quote=True)
+
+ICON = {
+ 'sun': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>',
+ 'moon': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>',
+ 'menu': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+ 'gh': '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.470-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.550-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.3 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.840-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>',
+ 'play': '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>',
+ 'expand': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>',
+ 'list': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>',
+ 'gear': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
+ 'file': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
+ 'down': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+}
+ICON['gh'] = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.3 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>'
+LAYER_NAME = {'modes': 'Run modes', 'coding': 'pi-coding-agent', 'ext': 'Extensions', 'agent': 'pi-agent-core', 'ai': 'pi-ai', 'tui': 'pi-tui', 'infra': 'Infra'}
+PKG_LAYER = {p['dir']: p['layer'] for p in PK}
+
+CAPTION = {
+ 'packages': ('内部依赖：实线 = dependencies，虚线 = devDependencies', 'Internal deps: solid = dependencies, dashed = devDependencies'),
+ 'layers': ('自上而下的四层运行时栈', 'The four-layer runtime stack, top to bottom'),
+ 'loop': ('runLoop()：内层循环与外层循环', 'runLoop(): inner and outer loop'),
+ 'toolexec': ('单个工具调用的处理管道', 'The pipeline for one tool call'),
+ 'sequence': ('Interactive 模式下的一次提示（含一次 bash 工具调用）', 'One prompt in interactive mode, with one bash tool call'),
+ 'classes': ('主要类与接口及其组合关系', 'Main classes and interfaces and how they compose'),
+ 'session': ('一个会话文件中的条目树（示例）', 'The entry tree inside one session file (example)'),
+ 'compaction': ('三种触发方式共享的压缩路径', 'One compaction path shared by three triggers'),
+ 'extensions': ('从发现、加载到事件分发', 'From discovery and loading to event dispatch'),
+ 'modes': ('resolveAppMode() 的分派', 'Dispatch in resolveAppMode()'),
+ 'providers': ('Provider → API 实现 → 统一事件流', 'Provider → API implementation → normalized event stream'),
+ 'tui': ('从按键 / 事件到终端输出的一帧', 'One frame, from keypress or event to terminal output'),
+ 'ac_arch': ('src/ 的 6 个文件、入口与对 pi-ai 的依赖', 'The six files in src/, the entry, and what they use from pi-ai'),
+ 'ac_state': ('Agent 的运行状态机与守卫', 'The Agent run state machine and its guards'),
+ 'ac_turn': ('两次请求 + 一次工具调用中的钩子与事件顺序', 'Hook and event order across two requests and one tool call'),
+ 'ac_events': ('AgentEvent 的嵌套、归约器与 pi-ai 事件映射', 'AgentEvent nesting, the reducer, and the mapping from pi-ai events'),
+ 'ac_queues': ('两个队列、三个 steering 轮询点与 follow-up', 'Two queues, three steering poll points, and follow-up'),
+ 'ac_parallel': ('并行与顺序模式的时间线（示意，时长为示例）', 'Parallel vs sequential timelines (illustrative durations)'),
+ 'ac_proxy': ('StreamFn 的解析与 streamProxy 的往返', 'How the StreamFn is resolved, and the streamProxy round trip'),
+ 'ac_types': ('核心类型与它们的关系', 'Core types and how they relate'),
+ 'ai_entry': ('导入路径、得到的内容与加载成本', 'Import paths, what you get, and what it costs to load'),
+ 'ai_registry': ('ModelsImpl、Provider 与目录刷新', 'ModelsImpl, Provider, and catalog refresh'),
+ 'ai_pipeline': ('外层流同步返回，setup 在背后异步完成', 'The outer stream returns now; setup completes behind it'),
+ 'ai_events': ('AssistantMessageEvent 语法与 EventStream 内部', 'AssistantMessageEvent grammar and EventStream internals'),
+ 'ai_convert': ('transformMessages 的六条规则', 'The six rules of transformMessages'),
+ 'ai_anthropic': ('Anthropic SSE → 统一事件、停止原因与 thinking 配置', 'Anthropic SSE → unified events, stop reasons and thinking'),
+ 'ai_budget': ('思考等级、maxTokens 推导与成本公式', 'Thinking levels, maxTokens derivation and the cost formula'),
+ 'ai_oneshot': ('generateImages() 与 classify()', 'generateImages() and classify()'),
+}
+assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
+
+def figure(key, title_pair):
+    cap = CAPTION[key]
+    return (f'<figure class="diagram" id="fig-{key}"><figcaption><span class="cap">{T(cap)}</span>'
+            f'<button class="iconbtn expand" type="button" data-i18n-title="放大查看|Enlarge">{ICON["expand"]}</button></figcaption>'
+            f'<div class="diagram-body"><div class="swipe-hint">{T(("← 左右滑动查看，点击放大 →", "← swipe to scroll, tap to enlarge →"))}</div>'
+            f'<div class="dg" data-dg="{key}" aria-label="{esc(title_pair[1])} diagram">{FIGS[key].svg()}</div></div></figure>')
+
+def flink(path, ln=None, label=None):
+    d, _, b = path.rpartition('/')
+    lab = label or f'<span class="dir">{esc(d + "/" if d else "")}</span>{esc(b)}'
+    return (f'<a class="f" href="{gh(path, ln)}" target="_blank" rel="noopener"><span>{lab}</span>'
+            f'{f"<span class=ln>L{ln}</span>" if ln else ""}</a>')
+
+def files_table(files):
+    rows = []
+    for path, pat, sym, zh, en in files:
+        ln = line_of(path, pat)
+        rows.append(f'<tr><td>{flink(path, ln)}</td><td class="sym"><code>{esc(sym)}</code></td><td class="col-role">{T((zh, en))}</td></tr>')
+    head = f'<thead><tr><th>{T(("文件", "File"))}</th><th>{T(("符号", "Symbol"))}</th><th class="col-role">{T(("作用", "Role"))}</th></tr></thead>'
+    return f'<div class="tbl"><table>{head}<tbody>{"".join(rows)}</tbody></table></div>'
+
+def sec_open(i, sid, layer, title, chip=None):
+    chip = chip or LAYER_NAME.get(layer, layer)
+    return (f'<section class="sec L-{layer}" id="{sid}" aria-labelledby="h-{sid}">'
+            f'<div class="sec-meta"><span class="sec-no">{i:02d}</span><span class="chip L-{layer}">{chip}</span></div>'
+            f'<h2 id="h-{sid}">{T(title)}<a class="anchor" href="#{sid}" aria-label="link">#</a></h2>')
+
+def section(i, s, moved_from=None):
+    L = s['layer']
+    pts = ''.join(f'<li>{T(p)}</li>' for p in s['points'])
+    how = ''.join(f'<li>{T(p)}</li>' for p in s['how'])
+    mv = (f'<p class="note">{T(("本节沿用第一版的图（原位于总览页），已按 v1.1.0 重新核对。", "This section keeps its first-edition diagram (formerly on the overview page), re-checked against v1.1.0."))}</p>') if moved_from else ''
+    return sec_open(i, s['id'], L, s['title']) + f'''
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(s["takeaway"])}</p>{mv}
+{figure(s["diagram"], s["title"])}
+<div class="grid2"><div class="card"><h3>{ICON["list"]}{T(("要点", "Key points"))}</h3><ul>{pts}</ul></div>
+<div class="card"><h3>{ICON["gear"]}{T(("工作原理", "How it works"))}</h3><ol>{how}</ol></div></div>
+<div class="files"><h3>{ICON["file"]}{T(("关键文件", "Key files"))} <span style="font-weight:500;letter-spacing:0;text-transform:none">· {REF}</span></h3>{files_table(s["files"])}</div>
+</section>'''
+
+# ---------------------------------------------------------------- source scanners (all mechanical)
+def ts_files(pdir, sub='src'):
+    root = SRC / 'packages' / pdir
+    out = []
+    for dp, dns, fns in os.walk(root / sub):
+        dns[:] = [x for x in dns if x not in ('node_modules', 'dist')]
+        for f in fns:
+            if f.endswith('.ts') and not f.endswith('.d.ts'):
+                fp = Path(dp) / f
+                out.append((fp.relative_to(SRC).as_posix(), sum(1 for _ in open(fp, errors='ignore'))))
+    return out
+
+def largest(pdir, n=10):
+    return sorted([x for x in ts_files(pdir) if '.test.' not in x[0]], key=lambda x: -x[1])[:n]
+
+TEST_RE = re.compile(r'^\s*(?:it|test)(?:\.each\([^)]*\))?\(\s*["\'`]', re.M)
+def tests_of(pdir):
+    root = SRC / 'packages' / pdir
+    out = []
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [x for x in dns if x not in ('node_modules', 'dist')]
+        for f in fns:
+            if '.test.' in f and f.endswith(('.ts', '.tsx', '.mjs')):
+                fp = Path(dp) / f; txt = fp.read_text(errors='ignore')
+                out.append((fp.relative_to(SRC).as_posix(), len(TEST_RE.findall(txt))))
+    return sorted(out, key=lambda x: (-x[1], x[0]))
+
+EXP_RE = re.compile(r'^export (?:declare )?(?:abstract )?(async function|function|class|const|let|type|interface|enum) ([A-Za-z_$][\w$]*)', re.M)
+def exports_of(path):
+    txt = read(path)
+    out = []
+    for m in EXP_RE.finditer(txt):
+        out.append((m.group(1).replace('async ', ''), m.group(2), txt.count('\n', 0, m.start()) + 1))
+    return out
+
+def changelog(pdir):
+    p = SRC / 'packages' / pdir / 'CHANGELOG.md'
+    if not p.exists(): return None
+    lines = p.read_text().splitlines()
+    try: start = next(i for i, l in enumerate(lines) if l.startswith(f'## [{VERSION}]'))
+    except StopIteration: return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('## [')), len(lines))
+    secs = {}; cur = None
+    for l in lines[start + 1:end]:
+        if l.startswith('### '): cur = l[4:].strip(); secs[cur] = []
+        elif l.startswith('- ') and cur: secs[cur].append(l[2:].strip())
+    date = re.search(r'\d{4}-\d{2}-\d{2}', lines[start])
+    return dict(line=start + 1, path=f'packages/{pdir}/CHANGELOG.md', secs=secs, date=date.group(0) if date else '')
+
+def clean_bullet(b, n=210):
+    b = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', b)
+    b = re.sub(r'\s*\((?:#\d+(?:,\s*)?)+\)', '', b)
+    b = re.sub(r'\s*\(\s*(?:#?\d+[ ,]*)+\)', '', b)
+    b = b.replace('**', '')
+    if len(b) > n: b = b[:n].rsplit(' ', 1)[0] + ' …'
+    if b.count('`') % 2: b = b.replace('`', '')
+    return b
+
+# ---------------------------------------------------------------- page chrome
+DEPTH = {}
+def rel(prefix, path):  # path relative to site root
+    return prefix + path
+
+def status_dot(st): return f'<span class="sd s-{st}">{T(pkgmeta.STATUS_NAME[st])}</span>'
+
+def pkg_href(prefix, slug): return f'{prefix}packages/{slug}/index.html'
+
+def topbar(prefix, active, cur_slug=None, toc=True):
+    menu = []
+    for gid, gname in pkgmeta.GROUP_NAME.items():
+        items = [p for p in PK if p['group'] == gid]
+        if not items: continue
+        menu.append(f'<div class="g">{T(gname)}</div>')
+        for p in items:
+            on = ' on' if p['slug'] == cur_slug else ''
+            menu.append(f'<a class="L-{p["layer"]}{on}" href="{pkg_href(prefix, p["slug"])}"><span class="dotL"></span><span class="nm">{p["slug"]}</span>{status_dot(p["status"])}</a>')
+    menu.append(f'<a class="all" href="{prefix}index.html#pkgs">{T(("全部 14 个包 →", "All 14 packages →"))}</a>')
+    cur = f'<span class="cur">· {cur_slug}</span>' if cur_slug else ''
+    nav = lambda key, href, lab: f'<a href="{href}"{" class=on" if active == key else ""}>{T(lab)}</a>'
+    return f'''<header class="topbar"><div class="wrap">
+{f'<button class="iconbtn only-mobile" id="toc-btn" type="button" data-i18n-title="目录|Contents">{ICON["menu"]}</button>' if toc else ''}
+<a class="brand" href="{prefix}index.html"><span class="logo"><span>π</span></span><span class="t">{T(SITE)}</span><small class="ver" title="Pi {REF}">{REF}</small></a>
+<details class="pkgsw{' on' if active == 'pkg' else ''}"><summary>{T(("包", "Packages"))}{cur}{ICON["down"]}</summary><nav class="pkgmenu" aria-label="Packages">{"".join(menu)}</nav></details>
+<nav class="topnav">{nav("hub", prefix + "index.html", ("总览", "Overview"))}{nav("roadmap", prefix + "roadmap/index.html", ("路线图", "Roadmap"))}</nav>
+<span class="spacer"></span>
+<div class="tools">
+<a class="btn sm" href="{prefix}slides.html">{ICON["play"].replace("<svg", "<svg width=14 height=14")}<span class="t2">{T(("演示", "Slides"))}</span></a>
+<div class="seg" role="group" aria-label="Language"><button type="button" data-set-lang="zh">中</button><button type="button" data-set-lang="en">EN</button></div>
+<button class="iconbtn" id="theme-btn" type="button" data-i18n-title="切换明暗|Toggle theme"><span class="th-moon">{ICON["moon"]}</span><span class="th-sun">{ICON["sun"]}</span></button>
+<a class="iconbtn gh" href="{GH}/tree/{REF}" target="_blank" rel="noopener" data-i18n-title="GitHub 源码（{REF}）|Source on GitHub ({REF})">{ICON["gh"]}</a>
+</div></div><div class="progress"></div></header>'''
+
+def crumbs(prefix, items):
+    out = [f'<a href="{prefix}index.html">{T(SITE)}</a>']
+    for href, lab in items[:-1]:
+        out.append(f'<span class="sep">/</span><a href="{href}">{T(lab)}</a>')
+    out.append(f'<span class="sep">/</span><span class="here">{T(items[-1][1])}</span>')
+    return f'<nav class="crumbs" aria-label="Breadcrumb">{"".join(out)}</nav>'
+
+def footer():
+    return (f'<footer class="foot"><span>{T((f"{SITE[0]} · {SUBTITLE[0]}：内容依据 earendil-works/pi 发布标签 `{REF}`（`{SHORT}`，{COMMIT_DATE[:10]}）生成，所有源码链接指向该标签。", f"{SITE[1]} · {SUBTITLE[1]}: generated from the earendil-works/pi release tag `{REF}` (`{SHORT}`, {COMMIT_DATE[:10]}); every source link points at that tag."))}</span>'
+            f'<span>{T(("离线可用 · 无 CDN 依赖", "Works offline · no CDN"))}</span></footer>')
+
+def HEAD(prefix, title_pair, css, extra='', desc=None):
+    d = desc or f'{SITE[1]} — a source-grounded architecture walkthrough of earendil-works/pi, analysis of Pi {REF} (tag {REF}, {SHORT}).'
+    return f'''<!doctype html>
+<html lang="zh-CN" data-theme="light" data-lang="zh"{extra}><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{esc(title_pair[0])}</title>
+<meta name="description" content="{esc(d)}">
+<meta name="pi-version" content="{VERSION}"><meta name="pi-ref" content="{REF} {SHA}">
+<meta property="og:title" content="{esc(title_pair[1])}"><meta property="og:description" content="{esc(d)}">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0d12'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23a78bfa' font-family='serif'%3E%CF%80%3C/text%3E%3C/svg%3E">
+<script src="{prefix}assets/prefs.js"></script>
+<link rel="stylesheet" href="{prefix}assets/base.css">{''.join(f'<link rel="stylesheet" href="{prefix}assets/{c}">' for c in css)}
+</head>'''
+
+def page(relpath, title_pair, body_html, active, toc_html=None, cur_slug=None, hero='', body_attrs=''):
+    depth = relpath.count('/')
+    prefix = '../' * depth
+    body_html = body_html.replace('{P}', prefix)
+    hero = hero.replace('{P}', prefix)
+    toc_html = (toc_html or '').replace('{P}', prefix)
+    out = HEAD(prefix, title_pair, ['site.css', 'dg.css']) + f'''
+<body data-title-zh="{esc(title_pair[0])}" data-title-en="{esc(title_pair[1])}"{body_attrs}>
+{topbar(prefix, active, cur_slug, toc=bool(toc_html))}
+{hero}
+<div class="wrap layout">{f'<aside class="toc" aria-label="Contents">{toc_html}</aside>' if toc_html else '<aside class="toc" aria-hidden="true"></aside>'}
+<main id="main">{DEFS}{body_html}
+{footer()}</main></div>
+<script src="{prefix}assets/dg.js"></script><script src="{prefix}assets/site.js"></script>
+</body></html>'''
+    out = out.replace('&lt;grad&gt;', '<span class="grad">').replace('&lt;/grad&gt;', '</span>').replace('&lt;br&gt;', '<br>')
+    dst = OUT / relpath; dst.parent.mkdir(parents=True, exist_ok=True); dst.write_text(out)
+    PAGES.append(relpath)
+PAGES = []
+
+def toc_build(groups, foot_links):
+    out = []
+    for gname, items in groups:
+        out.append(f'<div class="toc-g">{T(gname)}</div>')
+        for i, sid, title, layer in items:
+            out.append(f'<a href="#{sid}" class="L-{layer}"><span class="no">{i:02d}</span><span>{T(title)}</span><span class="dot"></span></a>')
+    out.append('<div class="toc-foot">' + ''.join(foot_links) + '</div>')
+    return ''.join(out)
+
+def pkg_chip(prefix, slug):
+    p = PBY[slug]
+    return f'<a class="chip L-{p["layer"]}" href="{pkg_href(prefix, slug)}">{slug}</a>'
+
+def facts_row(p):
+    st = STATS_BY.get(p['dir'], {})
+    tests = tests_of(p['dir'])
+    F = [(p['version'], ('版本', 'version')), (fmt(st.get('src_files', 0)), ('源文件', 'src files')), (fmt(st.get('src_loc', 0)), ('源码行', 'src LOC')),
+         (str(len(tests)), ('测试文件', 'test files')), (fmt(sum(c for _, c in tests)), ('测试用例', 'test cases')), (str(len(p['exports']) or 1), ('导出路径', 'export paths'))]
+    return '<div class="facts">' + ''.join(f'<div class="fact"><div class="n">{n}</div><div class="k">{T(k)}</div></div>' for n, k in F) + '</div>'
+
+def deps_row(prefix, p):
+    parts = []
+    parts.append(f'<span><b>{T(("依赖", "Depends on"))}</b></span>' + (''.join(pkg_chip(prefix, s) for s in p['dep_slugs']) or f'<span>{T(("无内部依赖", "no internal deps"))}</span>'))
+    parts.append(f'<span style="margin-left:10px"><b>{T(("被依赖", "Used by"))}</b></span>' + (''.join(pkg_chip(prefix, s) for s in p['dependents']) or '<span>—</span>'))
+    if p['dev_slugs']: parts.append(f'<span style="margin-left:10px"><b>dev</b></span>' + ''.join(pkg_chip(prefix, s) for s in p['dev_slugs']))
+    return '<div class="deps">' + ''.join(parts) + '</div>'
+
+def pkg_hero(p, lead=None):
+    prefix = '{P}'
+    return f'''<section class="phero L-{p["layer"]}"><div class="wrap">
+{crumbs(prefix, [(prefix + "index.html#pkgs", ("包", "Packages")), (None, (p["slug"], p["slug"]))])}
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="chip L-{p["layer"]}">{LAYER_NAME.get(p["layer"], p["layer"])}</span>{status_dot(p["status"])}<a class="chip L-infra" href="{gh("packages/" + p["dir"])}" target="_blank" rel="noopener">packages/{p["dir"]} · {REF}</a></div>
+<h1>{p["slug"]}<span class="npm">{p["npm"]}{" · private" if p["private"] else ""}</span></h1>
+<p class="lead">{T(lead or (p["desc"][0] + "。", p["desc"][1] + "."))}</p>
+{facts_row(p)}{deps_row(prefix, p)}
+</div></section>'''
+
+def checklist(done_keys, half_keys=()):
+    out = []
+    for k, name, d in pkgmeta.TEMPLATE:
+        cls = 'ok' if k in done_keys else 'half' if k in half_keys else ''
+        out.append(f'<li class="{cls}"><b>{T(name)}</b>{T(d)}</li>')
+    return f'<ul class="checklist">{"".join(out)}</ul>'
+
+def tests_table(p, n=None):
+    t = tests_of(p['dir'])
+    rows = t if n is None else t[:n]
+    trs = ''.join(f'<tr><td>{flink(path)}</td><td class="num">{c}</td></tr>' for path, c in rows)
+    more = f'<p class="note">{T((f"另有 {len(t) - len(rows)} 个测试文件未列出（共 {len(t)} 个，{sum(c for _, c in t)} 个用例）。", f"{len(t) - len(rows)} more test files not listed ({len(t)} files, {sum(c for _, c in t)} cases in total)."))}</p>' if len(rows) < len(t) else ''
+    return (f'<div class="tbl"><table><thead><tr><th>{T(("测试文件", "Test file"))}</th><th class="num">{T(("用例", "cases"))}</th></tr></thead><tbody>{trs}</tbody></table></div>{more}'
+            f'<p class="note">{T(("用例数 = 源码中 `it(` / `test(` 的出现次数（静态统计，不运行测试）。", "Cases = occurrences of `it(` / `test(` in the source (static count; tests were not run)."))}</p>')
+
+def largest_table(p, n=10):
+    trs = ''.join(f'<tr><td>{flink(path)}</td><td class="num">{fmt(c)}</td></tr>' for path, c in largest(p['dir'], n))
+    return f'<div class="tbl"><table><thead><tr><th>{T(("源文件（按行数）", "Source file (by lines)"))}</th><th class="num">{T(("行", "lines"))}</th></tr></thead><tbody>{trs}</tbody></table></div>'
+
+def exports_paths_table(p, notes=None):
+    j = json.loads(read(f'packages/{p["dir"]}/package.json'))
+    ex = j.get('exports') or {}
+    ln = line_of(f'packages/{p["dir"]}/package.json', r'"exports"') if ex else None
+    rows = []
+    for k, v in ex.items():
+        if k == './package.json': continue
+        tgt = v.get('import') if isinstance(v, dict) else v
+        note = (notes or {}).get(k)
+        rows.append(f'<tr><td><code>{esc(p["npm"] + k[1:])}</code></td><td class="sym"><code>{esc(str(tgt))}</code></td><td class="col-role">{T(note) if note else ""}</td></tr>')
+    if not rows: return f'<p class="note">{T(("package.json 没有 exports 字段（使用 main / types）。", "package.json has no exports map (uses main / types)."))}</p>'
+    return (f'<div class="tbl"><table><thead><tr><th>{T(("导入路径", "Import path"))}</th><th>{T(("目标", "Target"))}</th><th class="col-role">{T(("说明", "Notes"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+            f'<p class="note">{flink(f"packages/{p["dir"]}/package.json", ln, "package.json · exports")}</p>')
+# ---------------------------------------------------------------- package pages
+GROUP_TOC = {'arch': ('架构', 'Architecture'), 'flows': ('关键流程', 'Key flows'), 'types': ('数据类型', 'Data types'), 'ref': ('参考', 'Reference'), 'v1': ('第一版章节', 'First-edition sections')}
+
+def api_section_agent(i, p):
+    files = ['index.ts', 'agent.ts', 'agent-loop.ts', 'proxy.ts', 'stream-fn.ts', 'types.ts']
+    rows = []
+    idx = read('packages/agent/src/index.ts')
+    for f in files[1:]:
+        path = 'packages/agent/src/' + f
+        ex = exports_of(path)
+        if f == 'stream-fn.ts': ex = [e for e in ex if e[1] in idx]
+        vals = [e for e in ex if e[0] not in ('type', 'interface')]
+        types = [e for e in ex if e[0] in ('type', 'interface')]
+        link = lambda e: f'<a href="{gh(path, e[2])}" target="_blank" rel="noopener"><code>{esc(e[1])}</code></a>'
+        rows.append(f'<tr><td>{flink(path)}</td><td>{" ".join(link(e) for e in vals) or "—"}</td><td class="col-role">{" ".join(link(e) for e in types) or "—"}</td></tr>')
+    nv = sum(1 for f in files[1:] for e in exports_of('packages/agent/src/' + f) if e[0] not in ('type', 'interface'))
+    return sec_open(i, 'api', 'agent', ('公共 API', 'Public API')) + f'''
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(("只有一个导入路径 `@earendil-works/pi-agent-core`。日常只需要 `Agent`；需要自己管理状态时直接用 `agentLoop()` / `runAgentLoop()`；`runToolCall()` 让宿主在循环之外复用同一套工具管道。", "There is a single import path, `@earendil-works/pi-agent-core`. Day to day you only need `Agent`; manage state yourself with `agentLoop()` / `runAgentLoop()`; `runToolCall()` lets a host reuse the same tool pipeline outside the loop."))}</p>
+<div class="tbl"><table><thead><tr><th>{T(("文件", "File"))}</th><th>{T(("值导出", "Value exports"))}</th><th class="col-role">{T(("类型导出", "Type exports"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>
+<p class="note">{T(("由构建脚本扫描 `export` 声明生成，每个符号都链接到 v1.1.0 中的定义行。`getDefaultStreamFn` 未从 index.ts 导出。", "Generated by scanning `export` declarations at build time; each symbol links to its definition at v1.1.0. `getDefaultStreamFn` is not re-exported from index.ts."))}</p>
+</section>'''
+
+AI_EXPORT_NOTES = {
+ '.': ('核心：类型、`Type`、`createModels`、`createProvider`、事件流、工具函数', 'core: types, `Type`, `createModels`, `createProvider`, event streams, helpers'),
+ './models': ('只有 Models 运行时', 'Models runtime only'),
+ './compat': ('旧全局 API（已弃用）', 'old global API (deprecated)'),
+ './providers/*': ('每个 provider 一个文件；`all` = 全部', 'one file per provider; `all` = everything'),
+ './api/*': ('直接使用某个 API 实现（立即加载 SDK）', 'one API implementation directly (eager SDK)'),
+ './utils/*': ('event-stream、validation、overflow 等', 'event-stream, validation, overflow …'),
+ './oauth': ('OAuth 登录辅助', 'OAuth login helpers'),
+ './bedrock-provider': ('Amazon Bedrock（单独入口，依赖 AWS SDK）', 'Amazon Bedrock (separate entry, AWS SDK)'),
+ './bun-oauth': ('Bun 运行时的 OAuth 辅助', 'OAuth helpers for Bun'),
+}
+def api_section_ai(i, p):
+    idx = read('packages/ai/src/index.ts')
+    n_lines = len([l for l in idx.splitlines() if l.startswith('export')])
+    key = ['createModels', 'createProvider', 'calculateCost', 'Type', 'validateToolArguments', 'isContextOverflow', 'AssistantMessageEventStream', 'createAssistantMessageEventStream', 'normalizeContext', 'getSupportedThinkingLevels', 'clampThinkingLevel']
+    present = [k for k in key if re.search(rf'\b{k}\b', idx)]
+    return sec_open(i, 'api', 'ai', ('公共 API', 'Public API')) + f'''
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"9 个导出路径。根入口 `src/index.ts` 有 {n_lines} 条 export 语句；其中最常用的是 " + "、".join(f"`{k}`" for k in present[:8]) + "。", f"Nine export paths. The root entry `src/index.ts` has {n_lines} export statements; the most used are " + ", ".join(f"`{k}`" for k in present[:8]) + "."))}</p>
+{exports_paths_table(p, AI_EXPORT_NOTES)}
+</section>'''
+
+def ext_section(i, layer, items):
+    cards = ''.join(f'<div><b><code>{esc(k)}</code></b>{T(d)}</div>' for k, d in items)
+    return sec_open(i, 'ext', layer, ('扩展点', 'Extension points')) + f'<div class="ext-list">{cards}</div></section>'
+
+def tests_section(i, p, n=None, lead=None):
+    t = tests_of(p['dir'])
+    return sec_open(i, 'tests', p['layer'], ('测试', 'Tests')) + (f'<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(lead)}</p>' if lead else '') + tests_table(p, n) + '</section>'
+
+def xref_section(i, p, items, extra=''):
+    cards = ''.join(f'<a class="pkgcard L-{PBY[s]["layer"]}" href="{pkg_href("{P}", s)}"><span class="h"><b>{s}</b>{status_dot(PBY[s]["status"])}</span><p>{T(d)}</p></a>' for s, d in items)
+    return sec_open(i, 'xref', p['layer'], ('交叉链接', 'Cross-links')) + f'<div class="pkgcards">{cards}</div>{extra}</section>'
+
+def deck_link(slug, n):
+    return f'<a href="{{P}}packages/{slug}/slides.html">▶ {T((f"本包演示（{n} 页）", f"Package slides ({n})"))}</a>'
+
+def build_deep(slug, mod, order, api_fn, test_lead, slides_n):
+    p = PBY[slug]
+    secs = {s['id']: s for s in mod.SECTIONS}
+    body, toc_groups, i = [], {}, 0
+    for kind, sid in order:
+        i += 1
+        if kind == 'sec':
+            s = secs[sid]; body.append(section(i, s)); g = s['group']; title, layer = s['title'], s['layer']
+        elif kind == 'v1':
+            s = V1[sid]; body.append(section(i, s, moved_from='index')); g = 'flows'; title, layer = s['title'], s['layer']
+        elif kind == 'api':
+            body.append(api_fn(i, p)); g = 'ref'; title, layer = ('公共 API', 'Public API'), p['layer']
+        elif kind == 'ext':
+            body.append(ext_section(i, p['layer'], mod.EXT_POINTS)); g = 'ref'; title, layer = ('扩展点', 'Extension points'), p['layer']
+        elif kind == 'tests':
+            body.append(tests_section(i, p, 20, test_lead)); g = 'ref'; title, layer = ('测试', 'Tests'), p['layer']
+        elif kind == 'xref':
+            body.append(xref_section(i, p, mod.XREF)); g = 'ref'; title, layer = ('交叉链接', 'Cross-links'), p['layer']
+        toc_groups.setdefault(g, []).append((i, sid if kind in ('sec', 'v1') else kind, title, layer))
+    toc = toc_build([(GROUP_TOC[g], toc_groups[g]) for g in ('arch', 'flows', 'types', 'ref') if g in toc_groups],
+                    [deck_link(slug, slides_n), f'<a href="{gh("packages/" + p["dir"])}" target="_blank" rel="noopener">GitHub · packages/{p["dir"]} · {REF}</a>'])
+    intro = f'<p class="takeaway L-{p["layer"]}" style="--l:var(--{p["layer"]})"><span class="tl">{T(("这个包是什么", "What this package is"))}</span>{T(mod.INTRO["takeaway"])}</p><p class="note">{T(mod.INTRO["role"])}</p>'
+    page(f'packages/{slug}/index.html', (f'{slug} · {SITE[0]}', f'{slug} · {SITE[1]}'), intro + ''.join(body), 'pkg', toc, slug, hero=pkg_hero(p))
+    return [s for k, s in order if k == 'sec']
+
+PARTIAL = {
+ 'coding-agent': dict(v1=['session', 'compaction', 'extensions', 'modes'], hub=['sequence', 'classes'], done={'files', 'tests', 'xref'}, half={'overview', 'arch', 'flows', 'types', 'ext'},
+                      lead=('`pi-coding-agent` 是产品本身：`AgentSession` 把 `Agent`、会话树、工具、扩展与模型运行时组装在一起。第一版的 4 个相关章节已迁移到这里；完整的包级深挖（API、设置、工具实现、RPC）在路线图中。', 'The product itself: `AgentSession` assembles `Agent`, the session tree, tools, extensions and the model runtime. The four related first-edition sections now live here; the full package deep dive (API, settings, tool implementations, RPC) is on the roadmap.')),
+ 'tui': dict(v1=['tui'], hub=[], done={'files', 'tests', 'xref'}, half={'overview', 'flows'},
+             lead=('`pi-tui` 是独立的终端 UI 库：组件树渲染成行，差分写入终端。第一版的 TUI 章节已迁移到这里；组件、按键与输入处理的深挖在路线图中。', 'A standalone terminal UI library: the component tree renders to lines and only the diff is written to the terminal. The first-edition TUI section now lives here; components, keys and input handling are on the roadmap.')),
+}
+
+def build_partial(slug):
+    p = PBY[slug]; cfg = PARTIAL[slug]
+    body, items, i = [], [], 0
+    for sid in cfg['v1']:
+        i += 1; s = V1[sid]; body.append(section(i, s, moved_from='index')); items.append((i, sid, s['title'], s['layer']))
+    i += 1; body.append(sec_open(i, 'files-top', p['layer'], ('最大的源文件', 'Largest source files')) + largest_table(p) + '</section>'); items.append((i, 'files-top', ('最大的源文件', 'Largest source files'), p['layer']))
+    i += 1; body.append(sec_open(i, 'api', p['layer'], ('导出路径', 'Export paths')) + exports_paths_table(p) + '</section>'); items.append((i, 'api', ('导出路径', 'Export paths'), p['layer']))
+    i += 1; body.append(tests_section(i, p, 15)); items.append((i, 'tests', ('测试', 'Tests'), p['layer']))
+    i += 1
+    xr = [(s, PBY[s]['desc']) for s in (p['dep_slugs'] + p['dependents'])[:6]]
+    hub_links = ''.join(f'<li><a href="{{P}}index.html#{h}">{T(V1[h]["title"])}</a></li>' for h in cfg['hub'])
+    extra = f'<div class="moved">{T(("总览页上与本包相关的第一版章节：", "First-edition sections about this package that stay on the overview:"))}<ul>{hub_links}</ul></div>' if hub_links else ''
+    body.append(xref_section(i, p, xr, extra)); items.append((i, 'xref', ('交叉链接', 'Cross-links'), p['layer']))
+    i += 1; body.append(sec_open(i, 'plan', 'infra', ('深挖计划', 'Deep-dive plan'), 'Roadmap') + f'<p class="note">{T(("按包模板的进度（绿 = 完成，半 = 已有第一版内容）：", "Progress against the package template (green = done, half = first-edition content exists):"))}</p>' + checklist(cfg['done'], cfg['half']) + f'<p class="note"><a href="{{P}}roadmap/index.html">{T(("查看完整路线图 →", "See the full roadmap →"))}</a></p></section>')
+    items.append((i, 'plan', ('深挖计划', 'Deep-dive plan'), 'infra'))
+    toc = toc_build([(GROUP_TOC['v1'], items[:len(cfg['v1'])]), (GROUP_TOC['ref'], items[len(cfg['v1']):])],
+                    [f'<a href="{gh("packages/" + p["dir"])}" target="_blank" rel="noopener">GitHub · packages/{p["dir"]} · {REF}</a>'])
+    intro = f'<p class="takeaway" style="--l:var(--{p["layer"]})"><span class="tl">{T(("状态：部分完成", "Status: partial"))}</span>{T(cfg["lead"])}</p>'
+    page(f'packages/{slug}/index.html', (f'{slug} · {SITE[0]}', f'{slug} · {SITE[1]}'), intro + ''.join(body), 'pkg', toc, slug, hero=pkg_hero(p))
+
+def build_stub(slug):
+    p = PBY[slug]
+    cl = changelog(p['dir'])
+    body, items, i = [], [], 0
+    def add(sid, title, html_, layer=None):
+        nonlocal i; i += 1; layer = layer or p['layer']
+        body.append(sec_open(i, sid, layer, title) + html_ + '</section>'); items.append((i, sid, title, layer))
+    lead = (f'本页是自动生成的占位页：以下事实全部来自 v1.1.0 的 package.json 与源码扫描；人工撰写的架构图与流程分析尚未开始（见下方模板清单）。',
+            'This is a generated placeholder: every fact below comes from package.json and a source scan at v1.1.0; the hand-written diagrams and flow analysis have not started yet (see the template checklist below).')
+    body.append(f'<p class="takeaway" style="--l:var(--infra)"><span class="tl">{T(("状态：计划中", "Status: planned"))}</span>{T(lead)}</p>')
+    add('api', ('导出路径', 'Export paths'), exports_paths_table(p))
+    ext = ''.join(f'<code>{esc(d)}</code> ' for d in p['ext_deps']) or '—'
+    add('deps', ('依赖', 'Dependencies'), f'<div class="prose"><p>{T(("外部运行时依赖：", "External runtime dependencies: "))}{ext}</p></div>')
+    add('files-top', ('最大的源文件', 'Largest source files'), largest_table(p, 8))
+    t = tests_of(p['dir'])
+    add('tests', ('测试', 'Tests'), tests_table(p, 10) if t else f'<p class="note">{T(("没有找到 *.test.* 文件。", "No *.test.* files found."))}</p>')
+    if cl:
+        n = {k: len(v) for k, v in cl['secs'].items()}
+        cnt = ' · '.join(f'{k} {v}' for k, v in n.items())
+        add('changes', (f'{VERSION} 变更', f'Changes in {VERSION}'), f'<p class="note">{flink(cl["path"], cl["line"], f"CHANGELOG.md · [{VERSION}] · {cl["date"]}")} · {esc(cnt) or "—"}</p>')
+    add('plan', ('模板清单', 'Template checklist'), checklist(set()) + f'<p class="note"><a href="{{P}}roadmap/index.html">{T(("查看完整路线图 →", "See the full roadmap →"))}</a></p>', 'infra')
+    toc = toc_build([(('占位页', 'Placeholder'), items)], [f'<a href="{gh("packages/" + p["dir"])}" target="_blank" rel="noopener">GitHub · packages/{p["dir"]} · {REF}</a>'])
+    page(f'packages/{slug}/index.html', (f'{slug} · {SITE[0]}', f'{slug} · {SITE[1]}'), ''.join(body), 'pkg', toc, slug, hero=pkg_hero(p))
+
+# ---------------------------------------------------------------- hub
+MOVED = {'loop': 'agent-core', 'toolexec': 'agent-core', 'providers': 'pi-ai', 'session': 'coding-agent', 'compaction': 'coding-agent',
+         'extensions': 'coding-agent', 'modes': 'coding-agent', 'tui': 'tui'}
+HUB_SECS = ['packages', 'layers', 'sequence', 'classes']
+assert set(MOVED) | set(HUB_SECS) == set(V1), 'every first-edition section must have a home'
+
+def pkg_cards(prefix):
+    out = []
+    for gid, gname in pkgmeta.GROUP_NAME.items():
+        items = [p for p in PK if p['group'] == gid]
+        out.append(f'<div class="grp-h">{T(gname)}</div><div class="pkgcards">')
+        for p in items:
+            st = STATS_BY.get(p['dir'], {})
+            out.append(f'<a class="pkgcard L-{p["layer"]} {p["status"]}" href="{pkg_href(prefix, p["slug"])}"><span class="h"><span class="dotL"></span><b>{p["slug"]}</b>{status_dot(p["status"])}</span>'
+                       f'<p>{T((p["desc"][0], p["desc"][1]))}</p><span class="m"><span>{fmt(st.get("src_loc", 0))} LOC</span><span>{len(tests_of(p["dir"]))} tests</span><span>{len(p["dep_slugs"])} deps</span></span></a>')
+        out.append('</div>')
+    return ''.join(out)
+
+def stats_section(i):
+    rows = sorted(STATS, key=lambda x: -x['src_loc'])
+    mx = max(s['src_loc'] + s['test_loc'] for s in rows)
+    href = {p['dir']: p['slug'] for p in PK}
+    bars = ''.join(
+        f'<div class="bar L-{PKG_LAYER.get(s["pkg"], "infra")}"><span class="nm">{s["pkg"]}</span><span class="tr">'
+        f'<span class="s" style="width:{s["src_loc"] / mx * 100:.2f}%"></span><span class="t" style="width:{s["test_loc"] / mx * 100:.2f}%"></span></span>'
+        f'<span class="v">{fmt(s["src_loc"])}</span></div>' for s in rows)
+    trs = ''.join(f'<tr><td><a class="chip L-{PKG_LAYER.get(s["pkg"], "infra")}" href="{pkg_href("{P}", href[s["pkg"]])}">{s["pkg"]}</a></td><td class="num">{s["src_files"]}</td><td class="num">{fmt(s["src_loc"])}</td>'
+                  f'<td class="num">{s["test_files"]}</td><td class="num">{fmt(s["test_loc"])}</td><td class="num col-role">{s["all_ts_files"]}</td></tr>' for s in rows)
+    tot = lambda k: fmt(sum(s[k] for s in STATS))
+    trs += f'<tr class="tot"><td>{T(("合计", "Total"))}</td><td class="num">{tot("src_files")}</td><td class="num">{tot("src_loc")}</td><td class="num">{tot("test_files")}</td><td class="num">{tot("test_loc")}</td><td class="num col-role">{tot("all_ts_files")}</td></tr>'
+    ca = STATS_BY['coding-agent']
+    return sec_open(i, 'stats', 'infra', ('仓库统计', 'Repository stats'), 'Repository') + f'''
+<p class="takeaway L-coding"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"约 {SRC_LOC/1000:.0f}k 行源码、{TEST_LOC/1000:.0f}k 行测试；`coding-agent` 一个包就占了 {ca['src_loc']/SRC_LOC*100:.0f}% 的源码，测试代码量与源码相当。", f"About {SRC_LOC/1000:.0f}k lines of source and {TEST_LOC/1000:.0f}k of tests; `coding-agent` alone is {ca['src_loc']/SRC_LOC*100:.0f}% of the source, and test code roughly matches source code."))}</p>
+<p class="note">{T((f"统计自标签 `{REF}`（`{SHORT}`）：只计 `.ts`（不含 `.d.ts`），排除 node_modules 与 dist；src = `src/` 下，test = `test*/` 下或 `*.test.*`。", f"Counted at tag `{REF}` (`{SHORT}`): `.ts` only (no `.d.ts`), node_modules and dist excluded; src = under `src/`, test = under `test*/` or `*.test.*`."))}</p>
+<div class="bars-key"><span><i></i>{T(("源码行数", "src LOC"))}</span><span><i class="t"></i>{T(("测试行数", "test LOC"))}</span></div>
+<div class="bars" role="img" aria-label="Lines of code by package">{bars}</div>
+<div class="tbl"><table><thead><tr><th>{T(("包", "Package"))}</th><th class="num">{T(("源文件", "src files"))}</th><th class="num">{T(("源码行", "src LOC"))}</th><th class="num">{T(("测试文件", "test files"))}</th><th class="num">{T(("测试行", "test LOC"))}</th><th class="num col-role">{T(("全部 .ts", "all .ts"))}</th></tr></thead><tbody>{trs}</tbody></table></div>
+</section>'''
+
+def build_hub(n_slides):
+    P = '{P}'
+    i = 1
+    body = [sec_open(i, 'pkgs', 'coding', ('14 个包', 'The 14 packages'), 'Packages') + f'''
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(("从这里进入每个包的子页面。核心栈是 `coding-agent → agent-core → pi-ai`，外加 `tui`；其余包提供 MCP、代码沙箱、遥测、持久化运行时与远程会话。", "Enter each package's page from here. The core stack is `coding-agent → agent-core → pi-ai`, plus `tui`; the rest provide MCP, the code sandbox, telemetry, the durable runtime and remote sessions."))}</p>
+{pkg_cards(P)}
+<div class="moved">{T(("第一版中按包划分的章节已迁移到对应子页面（旧链接 `index.html#loop` 等会自动跳转）：", "First-edition sections that belong to one package now live on that package's page (old links such as `index.html#loop` redirect automatically):"))}<ul>
+{"".join(f'<li><a href="{pkg_href(P, s)}#{k}">{T(V1[k]["title"])}</a> → <code>{s}</code></li>' for k, s in MOVED.items())}</ul></div></section>''']
+    toc_items = [(1, 'pkgs', ('14 个包', 'The 14 packages'), 'coding')]
+    legend = f'''<div class="legend" id="legend"><h2>{T(("如何阅读这些图", "How to read the diagrams"))}</h2>
+<div class="chips">{''.join(f'<span class="chip L-{k}">{v}</span>' for k, v in LAYER_NAME.items())}</div>
+<ul><li>{T(("颜色 = 代码所在的层 / 包，所有页面、图、表与幻灯片一致。", "Colour = the layer / package the code lives in, identical across every page, diagram, table and slide."))}</li>
+<li>{T(("圆角容器 = 包或层；卡片 = 类、函数或组件；深色胶囊 = 起止点；红色 = 错误路径。", "Rounded containers = packages or layers; cards = classes, functions or components; dark pill = start / end; red = error path."))}</li>
+<li>{T(("实线箭头 = 调用 / 依赖；虚线 = 事件、异步返回或 devDependency；流动的虚线标出主路径；圆形数字 = 执行顺序。", "Solid arrow = call / dependency; dashed = event, async return or devDependency; animated dashes mark the main path; numbered circles = execution order."))}</li>
+<li>{T(("每张图都带图例。鼠标悬停某个组件会高亮它的连线；点击图可放大、滚轮缩放、拖动平移。", "Every diagram carries its own legend. Hover a component to highlight its connections; click to enlarge, wheel to zoom, drag to pan."))}</li></ul></div>'''
+    for sid in HUB_SECS:
+        i += 1; s = V1[sid]; body.append(section(i, s)); toc_items.append((i, sid, s['title'], s['layer']))
+    i += 1; body.append(stats_section(i)); toc_items.append((i, 'stats', ('仓库统计', 'Repository stats'), 'infra'))
+    toc = toc_build([(('总览', 'Overview'), toc_items[:1]), (('全局', 'Big picture'), toc_items[1:-1]), (('数据', 'Data'), toc_items[-1:])],
+                    [f'<a href="{P}roadmap/index.html">{T(("路线图与变更日志", "Roadmap & changelog"))}</a>',
+                     f'<a href="{P}slides.html">▶ {T((f"演示模式（{n_slides} 页）", f"Presentation ({n_slides} slides)"))}</a>',
+                     f'<a href="{GH}/tree/{REF}" target="_blank" rel="noopener">GitHub · {REF}</a>'])
+    stat_cards = [(fmt(FACTS['packages']), ('个 workspace 包', 'workspace packages')), (f'{SRC_LOC/1000:.0f}k', ('行 TypeScript 源码', 'lines of TS source')),
+                  (f'{TEST_LOC/1000:.0f}k', ('行测试代码', 'lines of tests')), (str(FACTS['providers']), ('个内置 LLM provider', 'built-in LLM providers')),
+                  (str(FACTS['tools']), ('个内置工具', 'built-in tools')), (str(FACTS['ext_events']), ('种扩展事件', 'extension events')),
+                  (str(FACTS['rpc']), ('种 RPC 命令', 'RPC command types')), (str(len(FIGS)), ('张手绘架构图', 'hand-laid diagrams'))]
+    stats = ''.join(f'<div class="stat"><div class="n">{n}</div><div class="k">{T(k)}</div></div>' for n, k in stat_cards)
+    stack = f'''<div class="stack" aria-label="layer stack">
+<div class="stack-h"><span>{T(("运行时分层", "Runtime layers"))}</span><span>↓ {T(("一次请求", "one request"))}</span></div>
+<a class="tier L-modes" href="{pkg_href(P, "coding-agent")}#modes"><b>Run modes</b><span>interactive · print · json · rpc</span></a>
+<div class="tier-row"><a class="tier L-coding" href="{pkg_href(P, "coding-agent")}"><b>pi-coding-agent</b><span>AgentSession</span></a><a class="tier L-ext" href="{pkg_href(P, "coding-agent")}#extensions"><b>Extensions</b><span>{FACTS["ext_events"]} events</span></a></div>
+<a class="tier L-agent" href="{pkg_href(P, "agent-core")}"><b>pi-agent-core</b><span>Agent · runLoop · tools</span></a>
+<a class="tier L-ai" href="{pkg_href(P, "pi-ai")}"><b>pi-ai</b><span>{FACTS["providers"]} providers · {FACTS["ai_events"]} events</span></a>
+<a class="tier L-tui" href="{pkg_href(P, "tui")}"><b>pi-tui</b><span>differential renderer</span></a>
+</div>'''
+    hero = f'''<section class="hero" id="top"><div class="wrap"><div>
+<a class="eyebrow" href="{GH}/releases/tag/{REF}" target="_blank" rel="noopener"><b>{REF}</b>{T(SUBTITLE)} · {COMMIT_DATE[:10]}</a>
+<h1>{T(("图解 <grad>Pi Agent</grad>", "<grad>Pi Agent</grad>,<br>Illustrated"), cls="h1")}</h1>
+<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；每个包有自己的子页面——`agent-core` 与 `pi-ai` 已完成深挖。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture; every package has its own page — `agent-core` and `pi-ai` are fully covered. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
+<div class="cta"><a class="btn primary" href="#pkgs">{T(("浏览 14 个包", "Browse the 14 packages"))} →</a><a class="btn" href="{P}slides.html">{ICON["play"].replace("<svg", "<svg width=15 height=15")}{T((f"演示模式 · {n_slides} 页", f"Presentation · {n_slides} slides"))}</a></div>
+<div class="stats">{stats}</div></div>
+{stack}
+</div></section>'''
+    moved_js = esc(json.dumps({k: f'packages/{s}/index.html#{k}' for k, s in MOVED.items()}))
+    page('index.html', (f'{SITE[0]} · {SUBTITLE[0]}', f'{SITE[1]} · {SUBTITLE[1]}'), body[0] + legend + ''.join(body[1:]), 'hub', toc, hero=hero, body_attrs=f' data-moved="{moved_js}"')
+
+# ---------------------------------------------------------------- roadmap + changelog
+def build_roadmap():
+    P = '{P}'
+    rows = ''.join(f'<tr><td><a class="chip L-{p["layer"]}" href="{pkg_href(P, p["slug"])}">{p["slug"]}</a></td><td><code>{p["npm"]}</code></td><td>{status_dot(p["status"])}</td><td class="col-role">{T(p["desc"])}</td></tr>' for p in PK)
+    cnt = {s: sum(1 for p in PK if p['status'] == s) for s in ('done', 'partial', 'planned')}
+    plan = f'''<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"信息架构 = 一个总览页 + 每个包一个子页面，全部使用同一个包模板。当前 {cnt['done']} 个完成、{cnt['partial']} 个部分完成、{cnt['planned']} 个计划中（已有自动生成的占位页，链接全部有效）。", f"Information architecture = one overview page + one page per package, all following the same package template. Currently {cnt['done']} done, {cnt['partial']} partial and {cnt['planned']} planned (each already has a generated placeholder page, so every link works)."))}</p>
+<div class="tbl"><table><thead><tr><th>{T(("包", "Package"))}</th><th>npm</th><th>{T(("状态", "Status"))}</th><th class="col-role">{T(("定位", "Role"))}</th></tr></thead><tbody>{rows}</tbody></table></div>'''
+    tmpl = f'<p class="note">{T(("每个包页面按以下 9 项组织；完成的包页面全部覆盖，占位页显示进度。", "Every package page is organised by these nine parts; finished pages cover all of them, placeholders show progress."))}</p>' + checklist({k for k, *_ in pkgmeta.TEMPLATE})
+    nxt = [(('第 3 批：coding-agent 深挖', 'Batch 3: coding-agent deep dive'), ('AgentSession 组装、工具实现（read/bash/edit/write…）、设置与 ModelRuntime、RPC 协议；保留已迁移的 4 节。', 'AgentSession assembly, tool implementations (read/bash/edit/write …), settings and ModelRuntime, the RPC protocol; keep the four moved sections.')),
+           (('第 4 批：tui 与 mcp / codemode', 'Batch 4: tui, mcp, codemode'), ('组件模型、按键解析、输入编辑器；MCP 客户端与 OAuth；codemode 沙箱与 worker。', 'Component model, key parsing, the input editor; the MCP client and OAuth; the codemode sandbox and worker.')),
+           (('第 5 批：chord / durable / env', 'Batch 5: chord, durable, env'), ('组合运行时、复制状态与 RPC；持久化会话 / 任务 / 文档；远程执行守护进程。', 'Composition runtime, replicated state and RPC; durable conversations / tasks / documents; the remote execution daemon.')),
+           (('第 6 批：protocol / client / server / telemetry / evals', 'Batch 6: protocol, client, server, telemetry, evals'), ('CBOR 帧协议与远程会话；遥测契约；评测套件。', 'The CBOR framing protocol and remote sessions; telemetry contracts; evaluation suites.'))]
+    nxt_html = '<ol class="prose">' + ''.join(f'<li><b>{T(a)}</b> — {T(b)}</li>' for a, b in nxt) + '</ol>'
+    # site changelog
+    site_cl = [
+        (('信息架构', 'Information architecture'), [('单页 → 总览 + 14 个包子页面 + 路线图；全站顶部导航带包切换器，子页面有面包屑。', 'Single page → overview + 14 package pages + roadmap; a global top nav with a package switcher, breadcrumbs on sub-pages.'),
+                                                   ('第一版 12 节全部保留：4 节留在总览，8 节迁到所属包页面；旧锚点自动跳转。', 'All 12 first-edition sections kept: 4 stay on the overview, 8 moved to their package pages; old anchors redirect.')]),
+        (('新内容', 'New content'), [(f'agent-core 与 pi-ai 深挖：新增 16 张手绘图（合计 {len(FIGS)} 张），公共 API、扩展点、测试与交叉链接。', f'agent-core and pi-ai deep dives: 16 new hand-laid diagrams ({len(FIGS)} in total), plus public API, extension points, tests and cross-links.'),
+                                     ('两个包各自的演示文稿；12 个包的自动占位页。', 'A slide deck for each of the two packages; generated placeholder pages for 12 packages.')]),
+        (('源码版本', 'Source version'), [(f'分析对象从开发中的提交 `4130bd5` 改为发布标签 `{REF}`（`{SHORT}`，{COMMIT_DATE[:10]}）；所有 GitHub 链接改为指向该标签，所有行号重新计算。', f'The analysed source moved from the in-progress commit `4130bd5` to the release tag `{REF}` (`{SHORT}`, {COMMIT_DATE[:10]}); every GitHub link now targets the tag and every line number was recomputed.'),
+                                          ('构建时断言：所有 14 个包的 package.json 版本均为 1.1.0；12 项核心计数（provider、API、事件、RPC 命令等）在标签上与第一版一致。', 'Build-time assertions: all 14 package.json versions are 1.1.0; the 12 core counts (providers, APIs, events, RPC commands …) are unchanged at the tag.')]),
+        (('名称', 'Name'), [('站点更名为“图解 Pi Agent”。', 'The site is now called “Pi Agent, Illustrated”.')]),
+    ]
+    site_html = '<div class="grid2">' + ''.join(f'<div class="card"><h3>{ICON["list"]}{T(t)}</h3><ul>{"".join(f"<li>{T(x)}</li>" for x in items)}</ul></div>' for t, items in site_cl) + '</div>'
+    # upstream changelog
+    ups = []
+    tot = {}
+    for p in PK:
+        cl = changelog(p['dir'])
+        if not cl:
+            ups.append(f'<div class="cl-pkg L-{p["layer"]}"><div style="padding:12px 16px;font-size:14px"><b class="mono">{p["slug"]}</b> · <span class="note">{T(("没有 CHANGELOG.md", "no CHANGELOG.md"))}</span></div></div>'); continue
+        cnts = ''.join(f'<span>{esc(k)} {len(v)}</span>' for k, v in cl['secs'].items())
+        for k, v in cl['secs'].items(): tot[k] = tot.get(k, 0) + len(v)
+        body = []
+        for k in ('Breaking Changes', 'Added', 'Changed', 'Fixed', 'Removed', 'Deprecated'):
+            if k not in cl['secs'] or not cl['secs'][k]: continue
+            b = cl['secs'][k]; show = b[:4]
+            body.append(f'<h4>{esc(k)} · {len(b)}</h4><ul>' + ''.join(f'<li lang="en">{md(clean_bullet(x))}</li>' for x in show) + ('<li class="note">…</li>' if len(b) > len(show) else '') + '</ul>')
+        if not body: body.append(f'<p class="note">{T(("该版本没有单独的条目。", "No entries of its own in this release."))}</p>')
+        ups.append(f'<details class="cl-pkg"{" open" if p["status"] == "done" else ""}><summary><span class="dotL L-{p["layer"]}"></span><b>{p["slug"]}</b>{status_dot(p["status"])}<span class="cnt">{cnts}</span></summary>'
+                   f'<div class="body">{"".join(body)}<p class="note" style="margin-top:10px">{flink(cl["path"], cl["line"], f"CHANGELOG.md · [{VERSION}] · {cl["date"]}")}</p></div></details>')
+    tot_s = ' · '.join(f'{k} {v}' for k, v in tot.items())
+    ups_html = f'<p class="note">{T((f"Pi v{VERSION} 发布于 {COMMIT_DATE[:10]}。以下摘自各包 CHANGELOG.md 的 `[{VERSION}]` 段（原文为英文，每类最多显示 4 条）。合计：{tot_s}。", f"Pi v{VERSION} was released on {COMMIT_DATE[:10]}. Excerpts from each package's CHANGELOG.md `[{VERSION}]` section (at most four per category). Totals: {tot_s}."))}</p>' + ''.join(ups)
+    secs = [('plan', ('站点规划', 'Site plan'), plan, 'coding'), ('template', ('包模板', 'Package template'), tmpl, 'agent'), ('next', ('下一步', 'Next steps'), nxt_html, 'ai'),
+            ('changelog-site', ('本版站点变更', 'What changed in this edition'), site_html, 'ext'), ('changelog', (f'Pi {VERSION} 变更日志', f'Pi {VERSION} changelog'), ups_html, 'modes')]
+    body, items = [], []
+    for i, (sid, title, h, layer) in enumerate(secs, 1):
+        body.append(sec_open(i, sid, layer, title, 'Roadmap' if i < 4 else 'Changelog') + h + '</section>'); items.append((i, sid, title, layer))
+    toc = toc_build([(('路线图', 'Roadmap'), items[:3]), (('变更日志', 'Changelog'), items[3:])], [f'<a href="{P}index.html">{T(("← 返回总览", "← Back to overview"))}</a>'])
+    hero = f'''<section class="phero L-coding"><div class="wrap">{crumbs(P, [(None, ("路线图", "Roadmap"))])}
+<h1>{T(("路线图与变更日志", "Roadmap & changelog"))}<span class="npm">{SITE[1]} · Pi {REF}</span></h1>
+<p class="lead">{T(("站点如何组织、每个包的进度、下一步计划，以及 Pi v1.1.0 相对上一版本的变化。", "How the site is organised, where each package stands, what comes next, and what changed in Pi v1.1.0."))}</p></div></section>'''
+    page('roadmap/index.html', (f'路线图 · {SITE[0]}', f'Roadmap · {SITE[1]}'), ''.join(body), 'roadmap', toc, hero=hero)
+
+# ---------------------------------------------------------------- slides
+def render_deck(relpath, slides=None, **kw):
+    from slides import render_slides
+    depth = relpath.count('/'); prefix = '../' * depth
+    body = render_slides(T=T, md=md, FACTS=FACTS, STATS=STATS, SRC_LOC=SRC_LOC, TEST_LOC=TEST_LOC, SHORT=SHORT, SHA=SHA, GH=GH,
+                         COMMIT_DATE=COMMIT_DATE, ICON=ICON, FIGS=FIGS, DEFS=DEFS, PKG_LAYER=PKG_LAYER, LAYER_NAME=LAYER_NAME, fmt=fmt,
+                         slides=slides, prefix=prefix, foot=f'{SITE[1]} · Pi {REF}', ref_url=f'{GH}/tree/{REF}', ref_label=f'github.com/earendil-works/pi · {REF}',
+                         eyebrow=f'<b>{REF}</b>{T(SUBTITLE)} · {COMMIT_DATE[:10]}', **kw)
+    i = body.index('<body'); i = body.index('>', i) + 1
+    body = body[:i] + DEFS + body[i:]
+    title = kw.get('deck_title', (f'{SITE[0]} · 演示', f'{SITE[1]} · Slides'))
+    dst = OUT / relpath; dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(HEAD(prefix, title, ['slides.css', 'dg.css'], extra=' data-default-theme="dark"') + body)
+    PAGES.append(relpath)
+
+def pkg_deck(slug, mod):
+    p = PBY[slug]
+    secs = {s['diagram']: s for s in mod.SECTIONS}
+    sl = [dict(kind='title', h1=(slug, slug), sub=(p['desc'][0], p['desc'][1]), layers=[p['layer']] + [PBY[d]['layer'] for d in p['dep_slugs']][:2])]
+    for j, k in enumerate(mod.SLIDE_KEYS, 1):
+        s = secs[k]
+        sl.append(dict(kind='wide', layer=s['layer'], diagram=k, kicker=(f'{j:02d} · {s["title"][0]}', f'{j:02d} · {s["title"][1]}'), title=s['title'], note=s['points'][0]))
+    sl.append(dict(kind='close', layer=p['layer'], kicker=('扩展点', 'Extension points'), title=(f'{slug} 的扩展点', f'Where to plug into {slug}'),
+                   items=[((k, k), d, p['layer']) for k, d in mod.EXT_POINTS[:5]]))
+    render_deck(f'packages/{slug}/slides.html', sl, back='index.html', deck_title=(f'{slug} · {SITE[0]} · 演示', f'{slug} · {SITE[1]} · Slides'))
+    return len(sl)
+
+# ---------------------------------------------------------------- fonts (subset, offline)
+def build_fonts(text):
+    from fontTools import subset
+    from fontTools.ttLib import TTCollection
+    fd = OUT / 'assets/fonts'; fd.mkdir(parents=True, exist_ok=True)
+    g = '/usr/share/fonts/truetype/sand-box/google'
+    latin = 'U+0000-00FF,U+0131,U+0152-0153,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2190-21FF,U+2212,U+2215,U+2260-2265,U+25A0-25FF,U+2713,U+2715,U+FEFF,U+FFFD,U+00D7,U+2208-220C,U+222A,U+2205,U+2026'
+    def sub(src, dst, unicodes=None, text=None, idx=0):
+        opts = subset.Options(); opts.flavor = 'woff2'; opts.layout_features = ['*']; opts.name_IDs = ['*']; opts.font_number = idx
+        f = subset.load_font(src, opts, dontLoadGlyphNames=True)
+        s = subset.Subsetter(opts)
+        s.populate(unicodes=subset.parse_unicodes(unicodes) if unicodes else [], text=text or '')
+        s.subset(f); subset.save_font(f, str(fd / dst), opts)
+    sym = ''.join(sorted(set(ch for ch in text if 0x2000 <= ord(ch) < 0x2E80)))
+    sub(f'{g}/Inter/Inter-VariableFont_opsz,wght.ttf', 'inter-var.woff2', latin)
+    sub(f'{g}/JetBrains Mono/JetBrainsMono-VariableFont_wght.ttf', 'jbmono-var.woff2', latin + ',' + ','.join(f'U+{ord(c):04X}' for c in sym))
+    cjk = ''.join(sorted(set(ch for ch in text if ord(ch) >= 0x2E80))) + '，。：；！？（）、《》“”‘’…—「」①②③④'
+    for w, file in (('400', 'NotoSansCJK-Regular.ttc'), ('700', 'NotoSansCJK-Bold.ttc')):
+        path = f'/usr/share/fonts/opentype/noto/{file}'
+        idx = next(i for i, ft in enumerate(TTCollection(path).fonts) if 'SC' in ft['name'].getDebugName(1))
+        sub(path, f'cjk-{w}.woff2', None, cjk, idx)
+    return len(cjk)
+
+def main():
+    if OUT.exists(): shutil.rmtree(OUT)
+    (OUT / 'assets').mkdir(parents=True)
+    for f in (HERE / 'static').iterdir():
+        if f.name == 'mmd.js': continue
+        shutil.copy(f, OUT / 'assets' / f.name)
+    (OUT / 'assets/stats.json').write_text(json.dumps(dict(site=SITE[1], version=VERSION, ref=REF, commit=SHA, commit_date=COMMIT_DATE, facts=FACTS, packages=STATS,
+                                                         package_status={p['slug']: p['status'] for p in PK}, extension_events=ext_events,
+                                                         rpc_commands=rpc_cmds, tools=tools, session_entry_types=entry_types), indent=1))
+    n_ac = pkg_deck('agent-core', deep_agent); n_ai = pkg_deck('pi-ai', deep_ai)
+    build_deep('agent-core', deep_agent, [('sec', 'ac-arch'), ('api', 'api'), ('sec', 'ac-lifecycle'), ('v1', 'loop'), ('sec', 'ac-turn'), ('v1', 'toolexec'),
+               ('sec', 'ac-parallel'), ('sec', 'ac-events'), ('sec', 'ac-queues'), ('sec', 'ac-proxy'), ('sec', 'ac-types'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_agent, ('4 个测试文件覆盖循环（钩子顺序、队列、并行工具、截断）、Agent 生命周期、端到端与代理流。', 'Four test files cover the loop (hook order, queues, parallel tools, truncation), the Agent lifecycle, end-to-end runs and the proxy stream.'), n_ac)
+    build_deep('pi-ai', deep_ai, [('sec', 'ai-entry'), ('sec', 'ai-registry'), ('api', 'api'), ('sec', 'ai-pipeline'), ('v1', 'providers'), ('sec', 'ai-events'),
+               ('sec', 'ai-convert'), ('sec', 'ai-anthropic'), ('sec', 'ai-budget'), ('sec', 'ai-oneshot'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_ai, ('测试以 provider 为单位组织：每个 API 实现都有流式、工具调用、停止原因与错误路径的测试，另有跨 provider 交接与成本计算测试。', 'Tests are organised per provider: every API implementation has tests for streaming, tool calls, stop reasons and error paths, plus cross-provider handoff and cost tests.'), n_ai)
+    for slug in PARTIAL: build_partial(slug)
+    for p in PK:
+        if p['status'] == 'planned': build_stub(p['slug'])
+    render_deck('slides.html')
+    build_hub(len(SLIDES)); build_roadmap()
+    text = ''.join((OUT / r).read_text() for r in PAGES) + ''.join(p.read_text() for p in (OUT / 'assets').glob('*.js'))
+    assert '1.10.0' not in text, 'stale version string'
+    n = build_fonts(text)
+    (OUT / 'assets/pages.json').write_text(json.dumps(PAGES, indent=1))
+    print('built', OUT, 'pages', len(PAGES), FACTS, 'figs', len(FIGS), 'cjk glyphs', n, 'ref', REF, SHORT)
+
+if __name__ == '__main__': main()
