@@ -17,7 +17,7 @@
 
   /* mobile TOC drawer */
   const tocBtn = document.getElementById('toc-btn');
-  tocBtn.addEventListener('click', () => document.body.classList.toggle('toc-open'));
+  if (tocBtn) tocBtn.addEventListener('click', () => document.body.classList.toggle('toc-open'));
   document.addEventListener('click', (e) => {
     if (document.body.classList.contains('toc-open') && !e.target.closest('.toc') && !e.target.closest('#toc-btn')) document.body.classList.remove('toc-open');
   });
@@ -32,6 +32,7 @@
     ticking = false;
     const y = window.scrollY + 120;
     let cur = targets[0];
+    if (!cur) return;
     for (const t of targets) if (t.offsetTop <= y) cur = t;
     if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) cur = targets[targets.length - 1];
     links.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + cur.id));
@@ -64,6 +65,16 @@
     body.addEventListener('scroll', () => { moved = true; }, { passive: true });
     body.addEventListener('click', () => { if (!moved && !window.getSelection().toString()) open(); });
   });
+
+  /* package switcher */
+  const sw = document.querySelector('.pkgsw');
+  if (sw) {
+    document.addEventListener('click', (e) => { if (sw.open && !e.target.closest('.pkgsw')) sw.open = false; });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sw.open) { sw.open = false; sw.querySelector('summary').focus(); } });
+  }
+  /* v1 deep links (index.html#loop …) now live on package pages */
+  const moved = document.body.dataset.moved ? JSON.parse(document.body.dataset.moved) : null;
+  if (moved && location.hash && moved[location.hash.slice(1)]) location.replace(moved[location.hash.slice(1)]);
 
   syncButtons();
   PiDG.prep(); fitDiagrams();

@@ -1,5 +1,9 @@
 {
- "commit": "4130bd5b32dac1d2d84697af1c4b587e133d488c",
+ "site": "Pi Agent, Illustrated",
+ "version": "1.1.0",
+ "ref": "v1.1.0",
+ "commit": "abe508e1b89912adde45528136c3221eb69acdd7",
+ "commit_date": "2026-10-07T23:33:33+02:00",
  "facts": {
   "apis": 10,
   "packages": 14,
@@ -22,11 +26,11 @@
   },
   {
    "pkg": "ai",
-   "src_files": 198,
-   "src_loc": 27238,
-   "test_files": 174,
-   "test_loc": 43102,
-   "all_ts_files": 382
+   "src_files": 196,
+   "src_loc": 26797,
+   "test_files": 173,
+   "test_loc": 43028,
+   "all_ts_files": 379
   },
   {
    "pkg": "chord",
@@ -46,27 +50,27 @@
   },
   {
    "pkg": "codemode",
-   "src_files": 16,
-   "src_loc": 2578,
-   "test_files": 5,
-   "test_loc": 1342,
-   "all_ts_files": 24
+   "src_files": 10,
+   "src_loc": 1837,
+   "test_files": 4,
+   "test_loc": 1114,
+   "all_ts_files": 15
   },
   {
    "pkg": "coding-agent",
-   "src_files": 303,
-   "src_loc": 86111,
-   "test_files": 332,
-   "test_loc": 71535,
-   "all_ts_files": 742
+   "src_files": 298,
+   "src_loc": 85816,
+   "test_files": 331,
+   "test_loc": 71137,
+   "all_ts_files": 735
   },
   {
    "pkg": "durable",
-   "src_files": 72,
-   "src_loc": 22427,
-   "test_files": 102,
-   "test_loc": 35081,
-   "all_ts_files": 176
+   "src_files": 67,
+   "src_loc": 20404,
+   "test_files": 90,
+   "test_loc": 29837,
+   "all_ts_files": 159
   },
   {
    "pkg": "env",
@@ -87,9 +91,9 @@
   {
    "pkg": "mcp",
    "src_files": 18,
-   "src_loc": 3244,
+   "src_loc": 3243,
    "test_files": 6,
-   "test_loc": 1532,
+   "test_loc": 1520,
    "all_ts_files": 25
   },
   {
@@ -119,12 +123,28 @@
   {
    "pkg": "tui",
    "src_files": 46,
-   "src_loc": 19505,
+   "src_loc": 19409,
    "test_files": 51,
-   "test_loc": 20072,
+   "test_loc": 19967,
    "all_ts_files": 97
   }
  ],
+ "package_status": {
+  "agent-core": "done",
+  "pi-ai": "done",
+  "coding-agent": "partial",
+  "tui": "partial",
+  "mcp": "planned",
+  "codemode": "planned",
+  "telemetry": "planned",
+  "chord": "planned",
+  "durable": "planned",
+  "env": "planned",
+  "protocol": "planned",
+  "client": "planned",
+  "server": "planned",
+  "evals": "planned"
+ },
  "extension_events": [
   "after_provider_response",
   "agent_before_settle",

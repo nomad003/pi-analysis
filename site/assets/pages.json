@@ -1,0 +1,21 @@
+[
+ "packages/agent-core/slides.html",
+ "packages/pi-ai/slides.html",
+ "packages/agent-core/index.html",
+ "packages/pi-ai/index.html",
+ "packages/coding-agent/index.html",
+ "packages/tui/index.html",
+ "packages/mcp/index.html",
+ "packages/codemode/index.html",
+ "packages/telemetry/index.html",
+ "packages/chord/index.html",
+ "packages/durable/index.html",
+ "packages/env/index.html",
+ "packages/protocol/index.html",
+ "packages/client/index.html",
+ "packages/server/index.html",
+ "packages/evals/index.html",
+ "slides.html",
+ "index.html",
+ "roadmap/index.html"
+]
