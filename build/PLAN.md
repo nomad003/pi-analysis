@@ -47,8 +47,8 @@ Statuses:
 | [pi-ai](../pi-site/packages/pi-ai/index.html) | `@earendil-works/pi-ai` | `packages/ai` | **done** | telemetry | Unified LLM API with automatic model discovery and provider configuration |
 | [coding-agent](../pi-site/packages/coding-agent/index.html) | `@earendil-works/pi-coding-agent` | `packages/coding-agent` | **done** | chord, agent-core, pi-ai, codemode, mcp, tui | Coding agent CLI with read, bash, edit, write tools and session management |
 | [tui](../pi-site/packages/tui/index.html) | `@earendil-works/pi-tui` | `packages/tui` | **done** | — | Terminal User Interface library with differential rendering for efficient text-based applications |
-| [mcp](../pi-site/packages/mcp/index.html) | `@earendil-works/pi-mcp` | `packages/mcp` | **planned** | — | Standalone Model Context Protocol client for pi and other applications |
-| [codemode](../pi-site/packages/codemode/index.html) | `@earendil-works/pi-codemode` | `packages/codemode` | **planned** | — | Sandboxed JavaScript execution where the only capability is calling injected tools |
+| [mcp](../pi-site/packages/mcp/index.html) | `@earendil-works/pi-mcp` | `packages/mcp` | **done** | — | Standalone Model Context Protocol client for pi and other applications |
+| [codemode](../pi-site/packages/codemode/index.html) | `@earendil-works/pi-codemode` | `packages/codemode` | **done** | — | Sandboxed JavaScript execution where the only capability is calling injected tools |
 | [telemetry](../pi-site/packages/telemetry/index.html) | `@earendil-works/pi-telemetry` | `packages/telemetry` | **planned** | — | Vendor-neutral telemetry contracts and typed schema utilities for pi |
 | [chord](../pi-site/packages/chord/index.html) | `@earendil-works/chord` | `packages/chord` | **planned** | — | Application composition runtime for services, replicated state, RPC, and plugins |
 | [durable](../pi-site/packages/durable/index.html) | `@earendil-works/pi-durable` | `packages/durable` | **planned** | chord, pi-ai | Durable conversation, task, and document runtime for Pi |
@@ -80,7 +80,7 @@ Statuses:
 | session, compaction, extensions, modes | packages/coding-agent |
 | tui | packages/tui |
 
-Every first-edition diagram is kept. There are 12 first-edition diagrams and 33 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui), 45 in total.
+Every first-edition diagram is kept. There are 12 first-edition diagrams and 49 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode), 61 in total.
 
 ## New diagrams
 
@@ -121,13 +121,32 @@ Every first-edition diagram is kept. There are 12 first-edition diagrams and 33 
   - `tui_editor`: Editor state, handleInput order, autocomplete
   - `tui_overlay`: OverlayOptions, 9 anchors, compositing, focus stack
   - `tui_terminal`: start-up negotiation, OSC outputs, capability table
+- **mcp** (`figs7.py`):
+  - `mcp_arch`: three module groups, the three import paths, coding-agent's extensions/mcp
+  - `mcp_lifecycle`: connection state machine, initialize handshake, Client/ServerCapabilities
+  - `mcp_requests`: pending-request bookkeeping, 30 s timeout and cancel, server→client requests, paging
+  - `mcp_stdio`: spawn, newline framing and limits, the staged close (0 / 500 / 2,500 ms)
+  - `mcp_http`: headers, the three POST responses, error mapping, SSE reconnect back-off
+  - `mcp_oauth`: triggers, the six-step flow, recovery, loopback callback server, provider state
+  - `mcp_content`: toLlmContent mapping, error classes, JSON-RPC codes
+  - `mcp_pi`: config sources, runtime, tool naming (64-char limit), the four exposures
+- **codemode** (`figs8.py`):
+  - `cm_arch`: host / in-sandbox / model-facing modules, four import paths
+  - `cm_sandbox`: host thread, per-run worker, QuickJS VM, the shared interrupt flag
+  - `cm_exec`: one execute() and its five endings
+  - `cm_bridge`: one tool call's round trip (VM → worker → host → back)
+  - `cm_prelude`: the script API, hard limits, lockdown, reserved names
+  - `cm_types`: public types and the `// @options:` source format
+  - `cm_decl`: JSON Schema → TypeScript declarations, with a worked example
+  - `cm_pi`: the codemode tool in coding-agent: nested calls, globals, store entries, modes
+
+Decks: diagrams with height/width ≥ 0.6 (tui_render, ca_session, ca_jsonl, …) use the `side` layout (two points beside the diagram) instead of `wide`, so they render at roughly 0.9× instead of 0.7×.
 
 ## Next batches
 
-Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4).
+Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5).
 
-5. mcp, codemode
-6. chord, durable, env
+6. chord, durable, env  ← next
 7. protocol, client, server, telemetry, evals
 
 To promote a package, add `deep_<pkg>.py` (same schema as `deep_agent.py`) and `figsN.py`, then set the status in `pkgmeta.py`.

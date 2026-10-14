@@ -264,7 +264,7 @@ def build_all():
         import figs4  # noqa: pi-ai deep dive (ai_*)
     except ModuleNotFoundError:
         pass
-    for m in ('figs5', 'figs6'):  # coding-agent (ca_*), tui (tui_*)
+    for m in ('figs5', 'figs6', 'figs7', 'figs8'):  # coding-agent (ca_*), tui (tui_*), mcp (mcp_*), codemode (cm_*)
         try: __import__(m)
         except ModuleNotFoundError: pass
     out = {}

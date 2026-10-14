@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------- package registry + version check
-import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui  # noqa
+import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm  # noqa
 PK = pkgmeta.load()
 PBY = {p['slug']: p for p in PK}
 assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
@@ -83,6 +83,22 @@ CAPTION = {
  'tui_editor': ('Editor 的状态、按键分支顺序与自动补全', 'Editor state, key-branch order and autocomplete'),
  'tui_overlay': ('覆盖层选项、9 个锚点、合成步骤与焦点栈', 'Overlay options, nine anchors, compositing and the focus stack'),
  'tui_terminal': ('启动协商、输出序列与按终端识别的能力', 'Start-up negotiation, output sequences and per-terminal capabilities'),
+ 'mcp_arch': ('三组模块、四个导入路径与 pi 中的使用者', 'Three module groups, the import paths and the user inside pi'),
+ 'mcp_lifecycle': ('连接状态机、initialize 握手与双方能力', 'The connection state machine, the initialize handshake and both sides\' capabilities'),
+ 'mcp_requests': ('请求簿记、超时与取消、服务器请求与分页', 'Request bookkeeping, timeouts and cancellation, server requests and paging'),
+ 'mcp_stdio': ('启动子进程、按行分帧与分阶段关闭', 'Spawning the child, line framing and the staged close'),
+ 'mcp_http': ('POST 的三种响应、错误映射与 SSE 重连', 'The three POST responses, error mapping and SSE reconnects'),
+ 'mcp_oauth': ('触发条件、授权流程六步与本地回调服务器', 'Triggers, the six-step flow and the local callback server'),
+ 'mcp_content': ('结果内容到模型内容的映射与错误类型', 'Mapping result content to model content, and the error types'),
+ 'mcp_pi': ('配置来源、运行时、工具命名与四种曝光方式', 'Config sources, the runtime, tool naming and the four exposures'),
+ 'cm_arch': ('宿主、沙箱内与给模型看的三组模块', 'Host, in-sandbox and model-facing module groups'),
+ 'cm_sandbox': ('宿主线程、worker 线程与 QuickJS 虚拟机', 'The host thread, the worker thread and the QuickJS VM'),
+ 'cm_exec': ('一次 execute() 的步骤与五种结局', 'The steps of one execute() and its five endings'),
+ 'cm_bridge': ('一次工具调用在 VM、worker 与宿主之间的往返', 'One tool call\'s round trip between VM, worker and host'),
+ 'cm_prelude': ('脚本 API、硬限额、锁定与保留名', 'The script API, hard limits, lockdown and reserved names'),
+ 'cm_types': ('公共类型与 @options 源码格式', 'Public types and the @options source format'),
+ 'cm_decl': ('从 JSON Schema 到 TypeScript 声明', 'From JSON Schema to TypeScript declarations'),
+ 'cm_pi': ('codemode 工具：嵌套调用、globals 与 store 条目', 'The codemode tool: nested calls, globals and store entries'),
 }
 assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
 

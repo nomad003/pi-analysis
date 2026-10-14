@@ -3,6 +3,8 @@
  "packages/pi-ai/slides.html",
  "packages/coding-agent/slides.html",
  "packages/tui/slides.html",
+ "packages/mcp/slides.html",
+ "packages/codemode/slides.html",
  "packages/agent-core/index.html",
  "packages/pi-ai/index.html",
  "packages/coding-agent/index.html",

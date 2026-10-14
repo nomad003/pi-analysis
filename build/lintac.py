@@ -2,7 +2,7 @@ import sys; sys.path.insert(0,'.')
 import figs, figs2, figs3
 try: import figs4
 except ImportError: pass
-for m in ('figs5','figs6'):
+for m in ('figs5','figs6','figs7','figs8'):
     try: __import__(m)
     except ImportError: pass
 pre = sys.argv[1] if len(sys.argv)>1 else 'ac_'
