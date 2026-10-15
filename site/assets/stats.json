@@ -140,9 +140,9 @@
   "chord": "done",
   "durable": "done",
   "env": "done",
-  "protocol": "planned",
-  "client": "planned",
-  "server": "planned",
+  "protocol": "done",
+  "client": "done",
+  "server": "done",
   "evals": "planned"
  },
  "extension_events": [

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------- package registry + version check
-import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env  # noqa
+import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env, deep_protocol, deep_client, deep_server  # noqa
 PK = pkgmeta.load()
 PBY = {p['slug']: p for p in PK}
 assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
@@ -123,6 +123,30 @@ CAPTION = {
  'env_exec': ('exec：命令、输出窗口、溢出文件与取消', 'exec: commands, output windows, spill files and cancellation'),
  'env_files': ('ExecutionEnv 的文件方法与守护进程的 17 个文件 op', "ExecutionEnv file methods and the daemon's 17 file ops"),
  'env_watch': ('文件监视：在文件旁边运行的 NodeFileWatcher', 'Watching: NodeFileWatcher running next to the files'),
+ 'proto_arch': ('pi-protocol 的三层：信封 schema、编解码与分帧', 'pi-protocol in three layers: envelope schemas, codec and framing'),
+ 'proto_pipe': ('一条消息的往返：校验、CBOR、分帧与反向解码', 'One message there and back: validation, CBOR, framing and decoding'),
+ 'proto_messages': ('协议版本 8 的 3 种客户端消息与 5 种服务端消息', 'Protocol version 8: 3 client messages and 5 server messages'),
+ 'proto_targets': ('RpcTarget：逻辑服务器、持久 Session 与实时附着', 'RpcTarget: logical server, durable Session and live attachment'),
+ 'proto_handshake': ('一条连接上的消息顺序：握手、请求、附着、订阅与取消', 'Message order on one connection: handshake, requests, attachment, subscriptions, cancellation'),
+ 'proto_frame': ('4 字节长度前缀与 FrameDecoder 的状态', 'The 4-byte length prefix and FrameDecoder states'),
+ 'proto_cbor': ('严格的 CBOR 子集：主类型、上限与一个编码例子', 'The strict CBOR subset: major types, limits and a worked encoding'),
+ 'proto_chord': ('分界：信封归 protocol，调用归 chord，数据归应用', 'The boundary: envelope for protocol, call for chord, data for the application'),
+ 'cli_arch': ('pi-client 的结构：Client、Connection 与可替换的字节传输', 'pi-client: Client, Connection and a pluggable byte transport'),
+ 'cli_lifecycle': ('Connection 的三个状态与握手失败', 'Connection in three states, and handshake failures'),
+ 'cli_request': ('一个请求：守卫、登记、编码、发送与按 id 结算', 'One request: guards, registration, encoding, sending and settlement by id'),
+ 'cli_subscribe': ('一个服务订阅：快照之前缓冲，start() 之后按序交付', 'One service subscription: buffered before the snapshot, ordered after start()'),
+ 'cli_attach': ('带外附着与 createClientServiceTransport', 'Out-of-band attachments and createClientServiceTransport'),
+ 'cli_transport': ('ByteTransport 契约与 Unix 写队列', 'The ByteTransport contract and the Unix write queue'),
+ 'cli_discover': ('discoverUnixServers：目录、过滤与并发握手探测', 'discoverUnixServers: directory, filtering and concurrent handshake probes'),
+ 'cli_errors': ('五种错误与断开之后的恢复', 'Five errors and recovery after a disconnect'),
+ 'srv_arch': ('pi-server 的结构：Server、SessionRouter、监听器与测试工具', 'pi-server: Server, SessionRouter, listeners and the testing kit'),
+ 'srv_host': ('ServerHost：应用交给 Server 的能力', 'ServerHost: the capabilities the app hands to the Server'),
+ 'srv_conn': ('一条服务器连接的五个阶段与握手', 'Five stages of a server connection, and the handshake'),
+ 'srv_request': ('handleRequest：核对、路由、订阅与错误映射', 'handleRequest: checks, routing, subscriptions and error mapping'),
+ 'srv_router': ('SessionRouter：按连接串行的 attach 与调用准入', 'SessionRouter: per-connection attach and call admission'),
+ 'srv_release': ('附着结束的六种方式与唯一的释放路径', 'Six ways an attachment ends, and the one release path'),
+ 'srv_unix': ('Unix 监听器：私有绑定、硬链接发布、按身份清理', 'The Unix listener: private bind, hard-link publish, identity-checked cleanup'),
+ 'srv_errors': ('ServerError 的五个子类与 ./testing 工具', 'The five ServerError subclasses and the ./testing kit'),
 }
 assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
 

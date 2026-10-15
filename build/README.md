@@ -12,7 +12,7 @@ fact and link is computed from the source at the release tag `v1.1.0`.
 |---|---|
 | `build.py` | multi-page generator: facts and assertions, chrome (top bar, package switcher, breadcrumbs), all pages and decks, font subsetting |
 | `content.py` | the 12 first-edition sections (now spread over the hub and package pages) |
-| `deep_agent.py`, `deep_ai.py`, `deep_ca.py`, `deep_tui.py`, `deep_mcp.py`, `deep_cm.py`, `deep_chord.py`, `deep_durable.py`, `deep_env.py` | agent-core, pi-ai, coding-agent, tui, mcp, codemode, chord, durable and env deep-dive content |
+| `deep_agent.py`, `deep_ai.py`, `deep_ca.py`, `deep_tui.py`, `deep_mcp.py`, `deep_cm.py`, `deep_chord.py`, `deep_durable.py`, `deep_env.py`, `deep_protocol.py`, `deep_client.py`, `deep_server.py` | agent-core, pi-ai, coding-agent, tui, mcp, codemode, chord, durable, env, protocol, client and server deep-dive content |
 | `pkgmeta.py` | package registry: status, grouping, template; the facts come from package.json |
 | `svgkit.py`, `figkit.py` | diagram toolkit, plus a strict lint for overlaps, crossings and overflow |
 | `figs.py`, `figs2.py` | first-edition diagrams |
@@ -20,6 +20,8 @@ fact and link is computed from the source at the release tag `v1.1.0`.
 | `figs5.py`, `figs6.py` | coding-agent (`ca_*`) and tui (`tui_*`) diagrams; facts parsed from the v1.1.0 source |
 | `figs7.py`, `figs8.py` | mcp (`mcp_*`) and codemode (`cm_*`) diagrams; facts parsed from the v1.1.0 source |
 | `figs9.py`, `figs10.py`, `figs11.py` | chord (`chord_*`), durable (`dur_*`) and env (`env_*`) diagrams; facts parsed from the v1.1.0 source, including env's Rust daemon |
+| `figs12.py`, `figs13.py`, `figs14.py` | protocol (`proto_*`), client (`cli_*`) and server (`srv_*`) diagrams; facts asserted against the v1.1.0 source of all three packages and coding-agent's `experimental/` users |
+| `lintp.py` | `python3 lintp.py <prefix> <modules…>`: lint just the diagrams with that key prefix |
 | `slides.py` | deck renderer, used for the main deck and the per-package decks |
 | `shoot2.py` | link check plus a headless Chromium matrix (light/dark × 1440/1920/390 × zh/EN) |
 | `preview.py` | renders single diagrams |

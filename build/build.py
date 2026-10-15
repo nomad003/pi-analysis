@@ -80,7 +80,7 @@ SRC_LOC = sum(s['src_loc'] for s in STATS); TEST_LOC = sum(s['test_loc'] for s i
 PKG_LAYER = {'coding-agent': 'coding', 'agent': 'agent', 'ai': 'ai', 'tui': 'tui'}
 
 # ---------------------------------------------------------------- package registry + version check
-import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env  # noqa
+import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env, deep_protocol, deep_client, deep_server  # noqa
 PK = pkgmeta.load()
 PBY = {p['slug']: p for p in PK}
 assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
@@ -204,6 +204,30 @@ CAPTION = {
  'env_exec': ('exec：命令、输出窗口、溢出文件与取消', 'exec: commands, output windows, spill files and cancellation'),
  'env_files': ('ExecutionEnv 的文件方法与守护进程的 17 个文件 op', "ExecutionEnv file methods and the daemon's 17 file ops"),
  'env_watch': ('文件监视：在文件旁边运行的 NodeFileWatcher', 'Watching: NodeFileWatcher running next to the files'),
+ 'proto_arch': ('pi-protocol 的三层：信封 schema、编解码与分帧', 'pi-protocol in three layers: envelope schemas, codec and framing'),
+ 'proto_pipe': ('一条消息的往返：校验、CBOR、分帧与反向解码', 'One message there and back: validation, CBOR, framing and decoding'),
+ 'proto_messages': ('协议版本 8 的 3 种客户端消息与 5 种服务端消息', 'Protocol version 8: 3 client messages and 5 server messages'),
+ 'proto_targets': ('RpcTarget：逻辑服务器、持久 Session 与实时附着', 'RpcTarget: logical server, durable Session and live attachment'),
+ 'proto_handshake': ('一条连接上的消息顺序：握手、请求、附着、订阅与取消', 'Message order on one connection: handshake, requests, attachment, subscriptions, cancellation'),
+ 'proto_frame': ('4 字节长度前缀与 FrameDecoder 的状态', 'The 4-byte length prefix and FrameDecoder states'),
+ 'proto_cbor': ('严格的 CBOR 子集：主类型、上限与一个编码例子', 'The strict CBOR subset: major types, limits and a worked encoding'),
+ 'proto_chord': ('分界：信封归 protocol，调用归 chord，数据归应用', 'The boundary: envelope for protocol, call for chord, data for the application'),
+ 'cli_arch': ('pi-client 的结构：Client、Connection 与可替换的字节传输', 'pi-client: Client, Connection and a pluggable byte transport'),
+ 'cli_lifecycle': ('Connection 的三个状态与握手失败', 'Connection in three states, and handshake failures'),
+ 'cli_request': ('一个请求：守卫、登记、编码、发送与按 id 结算', 'One request: guards, registration, encoding, sending and settlement by id'),
+ 'cli_subscribe': ('一个服务订阅：快照之前缓冲，start() 之后按序交付', 'One service subscription: buffered before the snapshot, ordered after start()'),
+ 'cli_attach': ('带外附着与 createClientServiceTransport', 'Out-of-band attachments and createClientServiceTransport'),
+ 'cli_transport': ('ByteTransport 契约与 Unix 写队列', 'The ByteTransport contract and the Unix write queue'),
+ 'cli_discover': ('discoverUnixServers：目录、过滤与并发握手探测', 'discoverUnixServers: directory, filtering and concurrent handshake probes'),
+ 'cli_errors': ('五种错误与断开之后的恢复', 'Five errors and recovery after a disconnect'),
+ 'srv_arch': ('pi-server 的结构：Server、SessionRouter、监听器与测试工具', 'pi-server: Server, SessionRouter, listeners and the testing kit'),
+ 'srv_host': ('ServerHost：应用交给 Server 的能力', 'ServerHost: the capabilities the app hands to the Server'),
+ 'srv_conn': ('一条服务器连接的五个阶段与握手', 'Five stages of a server connection, and the handshake'),
+ 'srv_request': ('handleRequest：核对、路由、订阅与错误映射', 'handleRequest: checks, routing, subscriptions and error mapping'),
+ 'srv_router': ('SessionRouter：按连接串行的 attach 与调用准入', 'SessionRouter: per-connection attach and call admission'),
+ 'srv_release': ('附着结束的六种方式与唯一的释放路径', 'Six ways an attachment ends, and the one release path'),
+ 'srv_unix': ('Unix 监听器：私有绑定、硬链接发布、按身份清理', 'The Unix listener: private bind, hard-link publish, identity-checked cleanup'),
+ 'srv_errors': ('ServerError 的五个子类与 ./testing 工具', 'The five ServerError subclasses and the ./testing kit'),
 }
 assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
 
@@ -713,6 +737,117 @@ def api_section_env(i, p):
         f"只有 {r} 个导入路径。index.ts 从 {nm} 个模块导出 {nv} 个值和 {nt} 个类型：SSH 部署与主机密钥、`Connection`、`RemoteExecutionEnv` 与 `RemoteWatcher`。",
         f"Just {r} import path. index.ts exports {nv} values and {nt} types from {nm} modules: SSH deployment and host keys, `Connection`, `RemoteExecutionEnv` and `RemoteWatcher`."))
 
+CLI_EXPORT_NOTES = {'.': ('Client、Chord 传输适配器、错误类与传输契约', 'Client, the Chord transport adapter, error classes and the transport contract'),
+                    './unix': ('Node / Bun 专用：Unix socket 传输与本机发现', 'Node / Bun only: the Unix-socket transport and local discovery'),
+                    './package.json': ('包元数据', 'package metadata')}
+CLI_KEY = [('client.ts', ['Client'], ('连接、请求、订阅、附着', 'connect, request, subscribe, attach')),
+           ('client.ts', ['createClientServiceTransport'], ('把路由适配成 Chord 传输', 'adapt a route to a Chord transport')),
+           ('errors.ts', ['ServerError', 'DisconnectedError', 'ClientDisposedError'], ('三种错误', 'the three errors')),
+           ('transport.ts', ['ByteTransport', 'ByteTransportFactory', 'ByteTransportHandlers'], ('自定义传输', 'custom transports')),
+           ('types.ts', ['ClientOptions', 'ServiceSubscription', 'ConnectionStateChange'], ('选项与句柄', 'options and handles'))]
+CLI_UNIX_KEY = [('unix.ts', ['createUnixTransportFactory'], ('一个 Unix socket 传输工厂', 'a Unix-socket transport factory')),
+                ('unix.ts', ['discoverUnixServers'], ('列出可以握手的本机服务器', 'list local servers that complete a handshake')),
+                ('unix.ts', ['UnixTransportOptions', 'UnixServerRoute', 'DiscoverUnixServersOptions'], ('选项与结果类型', 'option and result types'))]
+def api_section_client(i, p):
+    html = _api_generic(i, p, 'client', CLI_EXPORT_NOTES, CLI_KEY, lambda r, nm, nv, nt: (
+        f"{r} 个导入路径（另有 `./package.json`）。根入口从 {nm} 个模块导出 {nv} 个值和 {nt} 个类型：`Client`、`createClientServiceTransport` 与三种错误，其余是类型；Unix socket 传输与发现在 `./unix`。",
+        f"{r} import paths (plus `./package.json`). The root exports {nv} values and {nt} types from {nm} modules: `Client`, `createClientServiceTransport` and three errors, the rest are types; the Unix-socket transport and discovery live in `./unix`."))
+    unix = f'<h3 class="subh">{T(("子路径 ./unix", "Subpath ./unix"))}</h3>' + key_exports_table('packages/client/src/unix.ts', 'packages/client/src/', CLI_UNIX_KEY)
+    k = html.index('<h3 class="subh">', html.index('<h3 class="subh">') + 1)
+    return html[:k] + unix + html[k:]
+
+# ---- packages whose index.ts uses `export * from` (protocol, server): expand to the declarations, line-linked
+def public_exports(index_path):
+    """[(module path, [(kind, name, line)])] for everything index_path makes public, following nested index files."""
+    base = index_path.rsplit('/', 1)[0] + '/'
+    src = read(index_path); out = []
+    for m in re.finditer(r'export\s+(type\s+)?\{([^}]*)\}\s*from\s*"([^"]+)"|export \* from "([^"]+)"', src):
+        path = base + (m.group(4) or m.group(3))[2:]
+        ex = exports_of(path)
+        if m.group(4):
+            if re.search(r'export\s+(?:type\s+)?\{[^}]*\}\s*from|export \* from', read(path)): out += public_exports(path)
+            else: out.append((path, ex))
+            continue
+        by = {n: (k, l) for k, n, l in ex}
+        picked = []
+        for n in m.group(2).split(','):
+            n = re.sub(r'\s*//.*', '', n).strip()
+            if not n: continue
+            n = n.replace('type ', '').split(' as ')[-1].strip()
+            assert n in by, (index_path, path, n)
+            picked.append((by[n][0], n, by[n][1]))
+        out.append((path, picked))
+    return out
+
+def public_table(mods):
+    rows = []
+    for path, ex in mods:
+        link = lambda e: f'<a href="{gh(path, e[2])}" target="_blank" rel="noopener"><code>{esc(e[1])}</code></a>'
+        vals = [e for e in ex if e[0] not in ('type', 'interface')]; types = [e for e in ex if e[0] in ('type', 'interface')]
+        rows.append(f'<tr><td>{flink(path)}</td><td>{" ".join(link(e) for e in vals) or "—"}</td><td class="col-role">{" ".join(link(e) for e in types) or "—"}</td></tr>')
+    nv = sum(1 for _, ex in mods for e in ex if e[0] not in ('type', 'interface')); nt = sum(1 for _, ex in mods for e in ex if e[0] in ('type', 'interface'))
+    tbl = f'<div class="tbl"><table><thead><tr><th>{T(("来源模块", "Source module"))}</th><th>{T(("值导出", "Value exports"))}</th><th class="col-role">{T(("类型导出", "Type exports"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    return tbl, len(mods), nv, nt
+
+def public_key_table(mods, picks):
+    """picks: [([names], (zh, en))]; every name must be public."""
+    where = {e[1]: (path, e[2]) for path, ex in mods for e in ex}
+    rows = []
+    for names, note in picks:
+        for n in names: assert n in where, n
+        path = where[names[0]][0]
+        links = ' '.join(f'<a href="{gh(*where[n])}" target="_blank" rel="noopener"><code>{esc(n)}</code></a>' for n in names)
+        rows.append(f'<tr><td>{flink(path)}</td><td>{links}</td><td class="col-role">{T(note)}</td></tr>')
+    return f'<div class="tbl"><table><thead><tr><th>{T(("模块", "Module"))}</th><th>{T(("常用导出", "Key exports"))}</th><th class="col-role">{T(("用途", "Use"))}</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+
+def api_section_star(i, p, dir_, notes, picks, take, extra=''):
+    rows, etbl = _exports_rows(dir_, p, notes)
+    mods = public_exports(f'packages/{dir_}/src/index.ts')
+    tbl, nm, nv, nt = public_table(mods)
+    n_paths = len([k for k in json.loads(read(f'packages/{dir_}/package.json'))['exports'] if k != './package.json'])
+    return sec_open(i, 'api', p['layer'], ('公共 API', 'Public API')) + f"""
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(take(n_paths, nm, nv, nt))}</p>
+{etbl}
+<h3 class="subh">{T(("常用导出", "Key exports"))}</h3>{public_key_table(mods, picks)}{extra}
+<h3 class="subh">{T(("根入口的全部导出（按声明所在模块，逐行链接）", "Every root export, by declaring module (line-linked)"))}</h3>{tbl}
+<p class="note">{T(("由构建脚本展开 index.ts 的 `export *` 与 `export { … } from` 并扫描声明生成；每个符号链接到 v1.1.0 中的定义行。", "Generated at build time by expanding the `export *` and `export { … } from` statements in index.ts and scanning the declarations; each symbol links to its definition at v1.1.0."))}</p>
+</section>"""
+
+PROTO_EXPORT_NOTES = {'.': ('信封类型、校验与编码、增量解码、分帧与 CBOR', 'envelope types, validation and encoding, incremental decoding, framing and CBOR')}
+PROTO_KEY = [(['encodeClientMessage', 'encodeServerMessage'], ('校验并编码一整帧', 'validate and encode one whole frame')),
+             (['ClientMessageDecoder', 'ServerMessageDecoder'], ('增量解码并校验', 'decode and validate incrementally')),
+             (['parseClientMessage', 'parseServerMessage', 'ProtocolValidationError'], ('只校验，以及唯一的错误类型', 'validation only, and the one error type')),
+             (['PROTOCOL_VERSION', 'isServerId'], ('协议版本 8 与 serverId 检查', 'protocol version 8 and the serverId check')),
+             (['encodeFrame', 'FrameDecoder', 'DEFAULT_MAX_FRAME_LENGTH'], ('只用分帧', 'framing on its own')),
+             (['encodeCbor', 'decodeCbor', 'CborError'], ('只用 CBOR', 'CBOR on its own'))]
+def api_section_protocol(i, p):
+    return api_section_star(i, p, 'protocol', PROTO_EXPORT_NOTES, PROTO_KEY, lambda r, nm, nv, nt: (
+        f"只有 {r} 个导入路径。index.ts 通过 `export *` 与一个具名列表公开了 {nm} 个模块里的 {nv} 个值和 {nt} 个类型：编码 / 解码函数与类、分帧、CBOR，以及从 protocol.ts 选出的信封类型（schema 本身不导出）。",
+        f"Just {r} import path. Through `export *` and one named list, index.ts makes {nv} values and {nt} types public from {nm} modules: the encode / decode functions and classes, framing, CBOR, and a selection of envelope types from protocol.ts (the schemas themselves are not exported)."))
+
+SRV_EXPORT_NOTES = {'.': ('Server、ServerHost 契约、监听器契约与错误类', 'Server, the ServerHost contract, the listener contract and error classes'),
+                    './testing': ('测试服务器、内存宿主与帧级协议客户端', 'a test server, an in-memory host and a frame-level protocol client'),
+                    './unix': ('Node 专用：Unix socket 监听器与预设', 'Node only: the Unix-socket listener and preset')}
+SRV_KEY = [(['Server'], ('连接、握手与请求分派', 'connections, handshake and dispatch')),
+           (['ServerHost', 'SessionMetadata'], ('应用要实现的宿主', 'the host an app implements')),
+           (['RoutedSessionHandle', 'RoutedSessionAttachment'], ('Session 句柄与附着租约', 'Session handle and attachment lease')),
+           (['RoutedServerServiceHost', 'RoutedServerPresentation'], ('服务器级服务与附着能力', 'server-wide services and attach capabilities')),
+           (['ServerListener'], ('接入传输', 'plug in a transport')),
+           (['ServerError', 'SessionNotFoundError', 'SessionAmbiguousError'], ('可越过边界的错误', 'boundary-safe errors'))]
+SRV_UNIX_KEY = [('preset.ts', ['createUnixServer'], ('Server + 一个 Unix 监听器', 'Server + one Unix listener')),
+                ('listener.ts', ['createUnixListener'], ('单独的 Unix 监听器', 'a Unix listener on its own')),
+                ('address.ts', ['getUnixSocketPath'], ('<dir>/<serverId>.sock', '<dir>/<serverId>.sock')),
+                ('types.ts', ['UnixListenerOptions', 'UnixServerOptions'], ('选项', 'options'))]
+SRV_TEST_KEY = [('server.ts', ['createTestServer'], ('未启动的测试服务器', 'an unstarted test server')),
+                ('host.ts', ['TestServerHost', 'TestHarness', 'createTestServerServices', 'Deferred'], ('内存宿主与时序控制', 'in-memory host and timing control')),
+                ('client.ts', ['ProtocolTestClient', 'connectUnixTestClient'], ('帧级协议客户端', 'frame-level protocol client'))]
+def api_section_server(i, p):
+    extra = (f'<h3 class="subh">{T(("子路径 ./unix", "Subpath ./unix"))}</h3>' + key_exports_table('packages/server/src/transports/unix/index.ts', 'packages/server/src/transports/unix/', SRV_UNIX_KEY)
+             + f'<h3 class="subh">{T(("子路径 ./testing", "Subpath ./testing"))}</h3>' + key_exports_table('packages/server/src/testing/index.ts', 'packages/server/src/testing/', SRV_TEST_KEY))
+    return api_section_star(i, p, 'server', SRV_EXPORT_NOTES, SRV_KEY, lambda r, nm, nv, nt: (
+        f"{r} 个导入路径。根入口 index.ts 用 `export *` 公开 {nm} 个模块里的 {nv} 个值和 {nt} 个类型：`Server`、六个错误类、`INTERNAL_SERVER_ERROR_MESSAGE`，其余是宿主与监听器的契约；`SessionRouter` 和 `ByteConnection` 不公开。Unix 传输在 `./unix`，测试工具在 `./testing`。",
+        f"{r} import paths. The root index.ts uses `export *` to publish {nv} values and {nt} types from {nm} modules: `Server`, six error classes and `INTERNAL_SERVER_ERROR_MESSAGE`, the rest host and listener contracts; `SessionRouter` and `ByteConnection` stay private. The Unix transport lives in `./unix`, the testing kit in `./testing`."), extra)
+
 def ext_section(i, layer, items):
     cards = ''.join(f'<div><b><code>{esc(k)}</code></b>{T(d)}</div>' for k, d in items)
     return sec_open(i, 'ext', layer, ('扩展点', 'Extension points')) + f'<div class="ext-list">{cards}</div></section>'
@@ -881,7 +1016,7 @@ def build_hub(n_slides):
     hero = f'''<section class="hero" id="top"><div class="wrap"><div>
 <a class="eyebrow" href="{GH}/releases/tag/{REF}" target="_blank" rel="noopener"><b>{REF}</b>{T(SUBTITLE)} · {COMMIT_DATE[:10]}</a>
 <h1>{T(("图解 <grad>Pi Agent</grad>", "<grad>Pi Agent</grad>,<br>Illustrated"), cls="h1")}</h1>
-<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；每个包有自己的子页面——`coding-agent`、`agent-core`、`pi-ai`、`tui` 四个核心包以及 `mcp`、`codemode`、`chord`、`durable`、`env` 已完成深挖。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture; every package has its own page — the four core packages `coding-agent`, `agent-core`, `pi-ai` and `tui`, plus `mcp`, `codemode`, `chord`, `durable` and `env`, are fully covered. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
+<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；每个包有自己的子页面——`coding-agent`、`agent-core`、`pi-ai`、`tui` 四个核心包，`mcp`、`codemode`、`chord`、`durable`、`env`，以及远程会话三件套 `protocol`、`client`、`server` 已完成深挖。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture; every package has its own page — the four core packages `coding-agent`, `agent-core`, `pi-ai` and `tui`, plus `mcp`, `codemode`, `chord`, `durable`, `env` and the remote-session trio `protocol`, `client` and `server`, are fully covered. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
 <div class="cta"><a class="btn primary" href="#pkgs">{T(("浏览 14 个包", "Browse the 14 packages"))} →</a><a class="btn" href="{P}slides.html">{ICON["play"].replace("<svg", "<svg width=15 height=15")}{T((f"演示模式 · {n_slides} 页", f"Presentation · {n_slides} slides"))}</a></div>
 <div class="stats">{stats}</div></div>
 {stack}
@@ -897,15 +1032,20 @@ def build_roadmap():
     plan = f'''<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"信息架构 = 一个总览页 + 每个包一个子页面，全部使用同一个包模板。当前 {cnt['done']} 个完成、{cnt['partial']} 个部分完成、{cnt['planned']} 个计划中（已有自动生成的占位页，链接全部有效）。", f"Information architecture = one overview page + one page per package, all following the same package template. Currently {cnt['done']} done, {cnt['partial']} partial and {cnt['planned']} planned (each already has a generated placeholder page, so every link works)."))}</p>
 <div class="tbl"><table><thead><tr><th>{T(("包", "Package"))}</th><th>npm</th><th>{T(("状态", "Status"))}</th><th class="col-role">{T(("定位", "Role"))}</th></tr></thead><tbody>{rows}</tbody></table></div>'''
     tmpl = f'<p class="note">{T(("每个包页面按以下 9 项组织；完成的包页面全部覆盖，占位页显示进度。", "Every package page is organised by these nine parts; finished pages cover all of them, placeholders show progress."))}</p>' + checklist({k for k, *_ in pkgmeta.TEMPLATE})
-    nxt = [(('第 7 批（下一批）：protocol / client / server / telemetry / evals', 'Batch 7 (next): protocol, client, server, telemetry, evals'), ('CBOR 帧协议与远程会话；遥测契约；评测套件。', 'The CBOR framing protocol and remote sessions; telemetry contracts; evaluation suites.'))]
+    nxt = [(('第 8 批（下一批）：telemetry / evals', 'Batch 8 (next): telemetry, evals'), ('与厂商无关的遥测契约与类型化 schema；私有的评测套件（Docker 化任务）。', 'Vendor-neutral telemetry contracts and typed schemas; the private evaluation suites (dockerised tasks).'))]
     nxt_html = '<ol class="prose">' + ''.join(f'<li><b>{T(a)}</b> — {T(b)}</li>' for a, b in nxt) + '</ol>'
     # site changelog
     site_cl = [
-        (('本次更新：chord、durable 与 env 完成（第 6 批）', 'This update: chord, durable and env done (batch 6)'), [('chord 深挖：新增 8 张图（模块、facet 生命周期、热重载、服务、远程服务、复制状态、增量与草稿、打包与加载）。', 'chord deep dive: 8 new diagrams (modules, the facet lifecycle, hot reload, services, remote services, replicated state, deltas and drafts, bundling and loading).'),
+        (('本次更新：protocol、client 与 server 完成（第 7 批）', 'This update: protocol, client and server done (batch 7)'), [('protocol 深挖：新增 8 张图（三层结构、一条消息的往返、8 种消息、RpcTarget 路由、一条连接上的消息顺序、分帧、严格的 CBOR 子集、与 chord 的分界）。', 'protocol deep dive: 8 new diagrams (three layers, one message there and back, the 8 messages, RpcTarget routes, message order on one connection, framing, the strict CBOR subset, the boundary with chord).'),
+                                     ('client 深挖：新增 8 张图（模块、连接状态机、一个请求、服务订阅、附着与 Chord 适配器、字节传输与 Unix 写队列、本机发现、失败语义与恢复）。', 'client deep dive: 8 new diagrams (modules, the connection state machine, one request, service subscriptions, attachments and the Chord adapter, byte transports and the Unix write queue, local discovery, failure semantics and recovery).'),
+                                     ('server 深挖：新增 8 张图（模块、ServerHost 契约、连接阶段与握手、请求处理、SessionRouter、附着的释放、Unix 监听器、错误码与测试工具）。', 'server deep dive: 8 new diagrams (modules, the ServerHost contract, connection stages and the handshake, request handling, SessionRouter, attachment release, the Unix listener, error codes and the testing kit).'),
+                                     (f'三个包各有 10 页的演示文稿；protocol 与 server 的根入口用 `export *`，公共 API 表改为展开到声明所在的模块并逐行链接；全站合计 {len(FIGS)} 张图。', f'A 10-slide deck for each package; protocol and server use `export *` at the root, so their public-API tables expand to the declaring modules with line links; {len(FIGS)} diagrams site-wide.'),
+                                     ('telemetry 与 evals 顺延到第 8 批。', 'telemetry and evals move to batch 8.')]),
+        (('上次更新：chord、durable 与 env 完成（第 6 批）', 'Previous update: chord, durable and env done (batch 6)'), [('chord 深挖：新增 8 张图（模块、facet 生命周期、热重载、服务、远程服务、复制状态、增量与草稿、打包与加载）。', 'chord deep dive: 8 new diagrams (modules, the facet lifecycle, hot reload, services, remote services, replicated state, deltas and drafts, bundling and loading).'),
                                      ('durable 深挖：新增 8 张图（模块、数据模型、一次运行、任务、收件箱、文档、存储、扩展）。', 'durable deep dive: 8 new diagrams (modules, the data model, one run, tasks, the inbox, documents, storage, extensions).'),
                                      ('env 深挖：新增 8 张图（模块、TypeScript 与 Rust 的分工、SSH 部署、帧格式、一次连接、命令执行、文件操作、文件监视）。', 'env deep dive: 8 new diagrams (modules, the TypeScript / Rust split, SSH deployment, the frame format, one connection, command execution, file operations, file watching).'),
-                                     (f'三个包各有 10 页的演示文稿，公共 API 表按 index.ts 的导出自动生成；全站合计 {len(FIGS)} 张图。', f'A 10-slide deck for each package and public-API tables generated from the index.ts exports; {len(FIGS)} diagrams site-wide.')]),
-        (('上次更新：mcp 与 codemode 完成（第 5 批）', 'Previous update: mcp and codemode done (batch 5)'), [('mcp 深挖：新增 8 张图（模块、连接生命周期与握手、请求与分页、stdio 传输、Streamable HTTP、OAuth、结果内容与错误、在 pi 中的使用）。', 'mcp deep dive: 8 new diagrams (modules, connection lifecycle and handshake, requests and paging, the stdio transport, Streamable HTTP, OAuth, result content and errors, how pi uses it).'),
+                                     ('三个包各有 10 页的演示文稿，公共 API 表按 index.ts 的导出自动生成；当时全站合计 85 张图。', 'A 10-slide deck for each package and public-API tables generated from the index.ts exports; 85 diagrams site-wide at the time.')]),
+        (('更早：mcp 与 codemode 完成（第 5 批）', 'Earlier: mcp and codemode done (batch 5)'), [('mcp 深挖：新增 8 张图（模块、连接生命周期与握手、请求与分页、stdio 传输、Streamable HTTP、OAuth、结果内容与错误、在 pi 中的使用）。', 'mcp deep dive: 8 new diagrams (modules, connection lifecycle and handshake, requests and paging, the stdio transport, Streamable HTTP, OAuth, result content and errors, how pi uses it).'),
                                      ('codemode 深挖：新增 8 张图（模块、三层隔离、一次执行、工具调用往返、脚本 API 与限额、类型与源码格式、TypeScript 声明、在 pi 中的使用）。', 'codemode deep dive: 8 new diagrams (modules, three layers of isolation, one execution, the tool-call round trip, the script API and limits, types and the source format, TypeScript declarations, how pi uses it).'),
                                      ('两个包各有 10 页的演示文稿。', 'A 10-slide deck for each package.'),
                                      ('演示文稿：较高的图（如 tui 的差分渲染、coding-agent 的会话装配与 JSONL 格式）改用“左文右图”版式，显示得更大。', 'Decks: tall diagrams (such as tui differential rendering, coding-agent session wiring and the JSONL format) now use a text-beside-diagram layout and render larger.'),
@@ -1019,6 +1159,9 @@ def main():
     n_ac = pkg_deck('agent-core', deep_agent); n_ai = pkg_deck('pi-ai', deep_ai); n_ca = pkg_deck('coding-agent', deep_ca); n_tui = pkg_deck('tui', deep_tui)
     n_mcp = pkg_deck('mcp', deep_mcp); n_cm = pkg_deck('codemode', deep_cm)
     n_ch = pkg_deck('chord', deep_chord); n_du = pkg_deck('durable', deep_durable); n_env = pkg_deck('env', deep_env)
+    n_pr = pkg_deck('protocol', deep_protocol)
+    n_cl = pkg_deck('client', deep_client)
+    n_sv = pkg_deck('server', deep_server)
     build_deep('agent-core', deep_agent, [('sec', 'ac-arch'), ('api', 'api'), ('sec', 'ac-lifecycle'), ('v1', 'loop'), ('sec', 'ac-turn'), ('v1', 'toolexec'),
                ('sec', 'ac-parallel'), ('sec', 'ac-events'), ('sec', 'ac-queues'), ('sec', 'ac-proxy'), ('sec', 'ac-types'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
                api_section_agent, ('4 个测试文件覆盖循环（钩子顺序、队列、并行工具、截断）、Agent 生命周期、端到端与代理流。', 'Four test files cover the loop (hook order, queues, parallel tools, truncation), the Agent lifecycle, end-to-end runs and the proxy stream.'), n_ac)
@@ -1047,6 +1190,15 @@ def main():
     build_deep('env', deep_env, [('sec', 'env-arch'), ('api', 'api'), ('sec', 'env-split'), ('sec', 'env-ssh'), ('sec', 'env-frames'), ('sec', 'env-session'),
                ('sec', 'env-exec'), ('sec', 'env-files'), ('sec', 'env-watch'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
                api_section_env, ('TypeScript 测试跑 durable 的执行环境一致性套件，并与本机 `NodeExecutionEnv` 做差分对比；SSH 测试覆盖主机密钥与部署；守护进程的 Rust 代码另有自己的单元测试。', 'The TypeScript tests run durable\'s execution-environment conformance suite and diff the results against the local `NodeExecutionEnv`; the SSH tests cover host keys and deployment; the daemon\'s Rust code has its own unit tests.'), n_env)
+    build_deep('protocol', deep_protocol, [('sec', 'proto-arch'), ('api', 'api'), ('sec', 'proto-pipe'), ('sec', 'proto-messages'), ('sec', 'proto-targets'), ('sec', 'proto-handshake'),
+               ('sec', 'proto-frame'), ('sec', 'proto-cbor'), ('sec', 'proto-chord'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_protocol, ('三个测试文件：分帧（每个切分点、合并、空帧、上限）、信封校验（版本 8、不透明负载、取消、附着、未知字段）与 CBOR（undefined、BOM、__proto__、环、深度与长度上限）。', 'Three test files: framing (every split point, coalescing, empty frames, limits), envelope validation (version 8, opaque payloads, cancellation, attachments, unknown fields) and CBOR (undefined, BOM, __proto__, cycles, depth and length limits).'), n_pr)
+    build_deep('client', deep_client, [('sec', 'cli-arch'), ('api', 'api'), ('sec', 'cli-lifecycle'), ('sec', 'cli-request'), ('sec', 'cli-subscribe'), ('sec', 'cli-attach'),
+               ('sec', 'cli-transport'), ('sec', 'cli-discover'), ('sec', 'cli-errors'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_client, ('三个测试文件：client.test.ts 用内存传输覆盖握手、乱序回应、取消、订阅缓冲、附着与断开后的拒绝；unix-transport.test.ts 在真实 Unix socket 上跑完整握手与截断帧；unix.test.ts 覆盖发现的排序、过滤、陈旧 socket、超时与 16 路并发上限。', 'Three test files: client.test.ts uses an in-memory transport for the handshake, out-of-order responses, cancellation, subscription buffering, attachments and rejection after disconnect; unix-transport.test.ts runs a full handshake and truncated frames over a real Unix socket; unix.test.ts covers discovery ordering, filtering, stale sockets, timeouts and the 16-probe limit.'), n_cl)
+    build_deep('server', deep_server, [('sec', 'srv-arch'), ('api', 'api'), ('sec', 'srv-host'), ('sec', 'srv-conn'), ('sec', 'srv-request'), ('sec', 'srv-router'),
+               ('sec', 'srv-release'), ('sec', 'srv-unix'), ('sec', 'srv-errors'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_server, ('六个测试文件：conformance.test.ts（20 个用例）用 ./testing 覆盖 Session 协议——多附着、过期路由、跨服务器请求、未知 / 有歧义的 Session、Harness 终止与关闭时的清理；protocol.test.ts 覆盖握手与分帧（分片、合并、截断）；server.test.ts 覆盖选项校验、并发启动、握手超时与关闭失败；unix*.test.ts 与 listener.test.ts 覆盖 socket 绑定、陈旧清理、身份检查，以及排在待发数据之后的最终错误帧。', 'Six test files: conformance.test.ts (20 cases) uses ./testing to cover the Session protocol: multiple attachments, stale routes, cross-server requests, unknown / ambiguous Sessions, Harness termination and shutdown cleanup; protocol.test.ts covers the handshake and framing (fragmented, coalesced, truncated); server.test.ts covers option checks, concurrent start, the handshake timeout and shutdown failures; unix*.test.ts and listener.test.ts cover socket binding, stale cleanup, identity checks, and a final error frame queued behind pending output.'), n_sv)
     for p in PK:
         if p['status'] == 'planned': build_stub(p['slug'])
     render_deck('slides.html')

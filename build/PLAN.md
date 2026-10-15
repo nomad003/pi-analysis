@@ -53,9 +53,9 @@ Statuses:
 | [chord](../pi-site/packages/chord/index.html) | `@earendil-works/chord` | `packages/chord` | **done** | — | Application composition runtime for services, replicated state, RPC, and plugins |
 | [durable](../pi-site/packages/durable/index.html) | `@earendil-works/pi-durable` | `packages/durable` | **done** | chord, pi-ai | Durable conversation, task, and document runtime for Pi |
 | [env](../pi-site/packages/env/index.html) | `@earendil-works/pi-env` | `packages/env` | **done** | chord, durable | Remote execution environments for Pi Durable: a small daemon deployed over SSH and its ExecutionEnv client |
-| [protocol](../pi-site/packages/protocol/index.html) | `@earendil-works/pi-protocol` | `packages/protocol` | **planned** | chord | Transport-neutral CBOR protocol for remote pi sessions |
-| [client](../pi-site/packages/client/index.html) | `@earendil-works/pi-client` | `packages/client` | **planned** | chord, protocol | Transport-neutral client for remote pi sessions over framed CBOR bytes |
-| [server](../pi-site/packages/server/index.html) | `@earendil-works/pi-server` | `packages/server` | **planned** | chord, protocol | experimental server package for pi |
+| [protocol](../pi-site/packages/protocol/index.html) | `@earendil-works/pi-protocol` | `packages/protocol` | **done** | chord | Transport-neutral CBOR protocol for remote pi sessions |
+| [client](../pi-site/packages/client/index.html) | `@earendil-works/pi-client` | `packages/client` | **done** | chord, protocol | Transport-neutral client for remote pi sessions over framed CBOR bytes |
+| [server](../pi-site/packages/server/index.html) | `@earendil-works/pi-server` | `packages/server` | **done** | chord, protocol | experimental server package for pi |
 | [evals](../pi-site/packages/evals/index.html) | `@earendil-works/pi-evals` | `packages/evals` | **planned** | — | Private package: evaluation suites (dockerised tasks) |
 
 ## Per-package template
@@ -80,7 +80,7 @@ Statuses:
 | session, compaction, extensions, modes | packages/coding-agent |
 | tui | packages/tui |
 
-Every first-edition diagram is kept. There are 12 first-edition diagrams and 73 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode, 24 for chord/durable/env), 85 in total.
+Every first-edition diagram is kept. There are 12 first-edition diagrams and 97 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode, 24 for chord/durable/env, 24 for protocol/client/server), 109 in total.
 
 ## New diagrams
 
@@ -166,14 +166,41 @@ Every first-edition diagram is kept. There are 12 first-edition diagrams and 73 
   - `env_exec`: shell choice, output window, spill files, cancellation
   - `env_files`: ExecutionEnv file methods → the daemon's 17 file ops, handles, limits
   - `env_watch`: `NodeFileWatcher` running next to the files
+- **protocol** (`figs12.py`):
+  - `proto_arch`: envelope schemas, codec, framing, CBOR; deps and users
+  - `proto_pipe`: validate → CBOR → frame → bytes → split → decode → validate
+  - `proto_messages`: protocol version 8: 3 client and 5 server messages
+  - `proto_targets`: RpcTarget: serverId / sessionId / attachmentId, rejected routes
+  - `proto_handshake`: message order on one connection (sequence diagram)
+  - `proto_frame`: the u32 length prefix and FrameDecoder states
+  - `proto_cbor`: the strict CBOR subset, limits, a hello encoded byte by byte (computed)
+  - `proto_chord`: envelope for protocol, call for chord, data for the app
+- **client** (`figs13.py`):
+  - `cli_arch`: Client, Connection, ByteTransport, `./unix`; deps and coding-agent users
+  - `cli_lifecycle`: disconnected → connecting → connected; handshake failures; cleanup
+  - `cli_request`: guards, `request-N`, pending map, abort → cancel, settlement
+  - `cli_subscribe`: buffered until snapshot, then `start()` (sequence diagram)
+  - `cli_attach`: out-of-band attachment, `createClientServiceTransport`, `#targetIsCurrent`
+  - `cli_transport`: the ByteTransport contract, the Unix write queue, the radius relay
+  - `cli_discover`: `discoverUnixServers`: readdir → filter → ≤16 probes → sorted routes
+  - `cli_errors`: five rejections and app-driven recovery
+- **server** (`figs14.py`):
+  - `srv_arch`: Server, SessionRouter, listeners, `./unix`, `./testing`; users
+  - `srv_host`: the ServerHost contract (UML)
+  - `srv_conn`: awaitingHello → handshaking → ready → closing → closed
+  - `srv_request`: handleRequest checks, routing, subscriptions, toProtocolError, cancel
+  - `srv_router`: per-client queue, acquire/open, lease, publishAttachment, admission
+  - `srv_release`: six triggers, one `releaseAttachment` path, shutdown
+  - `srv_unix`: private bind, hard-link publish, chmod, identity-checked cleanup (bind hash computed)
+  - `srv_errors`: the five ServerError subclasses (parsed), the `./testing` kit, test counts
 
 Decks: diagrams with height/width ≥ 0.6 (tui_render, ca_session, ca_jsonl, …) use the `side` layout (two points beside the diagram) instead of `wide`, so they render at roughly 0.9× instead of 0.7×.
 
 ## Next batches
 
-Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5), chord, durable, env (batch 6).
+Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5), chord, durable, env (batch 6), protocol, client, server (batch 7).
 
-7. protocol, client, server, telemetry, evals  ← next
+8. telemetry, evals  ← next
 
 To promote a package, add `deep_<pkg>.py` (same schema as `deep_agent.py`) and `figsN.py`, then set the status in `pkgmeta.py`.
 
