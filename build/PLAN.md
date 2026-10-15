@@ -50,9 +50,9 @@ Statuses:
 | [mcp](../pi-site/packages/mcp/index.html) | `@earendil-works/pi-mcp` | `packages/mcp` | **done** | — | Standalone Model Context Protocol client for pi and other applications |
 | [codemode](../pi-site/packages/codemode/index.html) | `@earendil-works/pi-codemode` | `packages/codemode` | **done** | — | Sandboxed JavaScript execution where the only capability is calling injected tools |
 | [telemetry](../pi-site/packages/telemetry/index.html) | `@earendil-works/pi-telemetry` | `packages/telemetry` | **planned** | — | Vendor-neutral telemetry contracts and typed schema utilities for pi |
-| [chord](../pi-site/packages/chord/index.html) | `@earendil-works/chord` | `packages/chord` | **planned** | — | Application composition runtime for services, replicated state, RPC, and plugins |
-| [durable](../pi-site/packages/durable/index.html) | `@earendil-works/pi-durable` | `packages/durable` | **planned** | chord, pi-ai | Durable conversation, task, and document runtime for Pi |
-| [env](../pi-site/packages/env/index.html) | `@earendil-works/pi-env` | `packages/env` | **planned** | chord, durable | Remote execution environments for Pi Durable: a small daemon deployed over SSH and its ExecutionEnv client |
+| [chord](../pi-site/packages/chord/index.html) | `@earendil-works/chord` | `packages/chord` | **done** | — | Application composition runtime for services, replicated state, RPC, and plugins |
+| [durable](../pi-site/packages/durable/index.html) | `@earendil-works/pi-durable` | `packages/durable` | **done** | chord, pi-ai | Durable conversation, task, and document runtime for Pi |
+| [env](../pi-site/packages/env/index.html) | `@earendil-works/pi-env` | `packages/env` | **done** | chord, durable | Remote execution environments for Pi Durable: a small daemon deployed over SSH and its ExecutionEnv client |
 | [protocol](../pi-site/packages/protocol/index.html) | `@earendil-works/pi-protocol` | `packages/protocol` | **planned** | chord | Transport-neutral CBOR protocol for remote pi sessions |
 | [client](../pi-site/packages/client/index.html) | `@earendil-works/pi-client` | `packages/client` | **planned** | chord, protocol | Transport-neutral client for remote pi sessions over framed CBOR bytes |
 | [server](../pi-site/packages/server/index.html) | `@earendil-works/pi-server` | `packages/server` | **planned** | chord, protocol | experimental server package for pi |
@@ -80,7 +80,7 @@ Statuses:
 | session, compaction, extensions, modes | packages/coding-agent |
 | tui | packages/tui |
 
-Every first-edition diagram is kept. There are 12 first-edition diagrams and 49 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode), 61 in total.
+Every first-edition diagram is kept. There are 12 first-edition diagrams and 73 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode, 24 for chord/durable/env), 85 in total.
 
 ## New diagrams
 
@@ -139,15 +139,41 @@ Every first-edition diagram is kept. There are 12 first-edition diagrams and 49 
   - `cm_types`: public types and the `// @options:` source format
   - `cm_decl`: JSON Schema → TypeScript declarations, with a worked example
   - `cm_pi`: the codemode tool in coding-agent: nested calls, globals, store entries, modes
+- **chord** (`figs9.py`):
+  - `chord_arch`: modules, the five import paths, coding-agent's experimental services
+  - `chord_facets`: one facet generation: setup → validate → wire → activate → release
+  - `chord_reload`: `FacetHost.reload(facets)`: new generation, stable handles, rollback
+  - `chord_services`: service tokens, modes, stable handles, Context
+  - `chord_remote`: provider ⇄ transport ⇄ binding: catalogue, subscribe, calls, updates
+  - `chord_state`: how one `change()` on replicated state becomes a new value remotely
+  - `chord_delta`: the seven delta ops and on-the-wire compression
+  - `chord_bundle`: esbuild → manifest → integrity-checked loading in `node:vm`
+- **durable** (`figs10.py`):
+  - `dur_arch`: modules, the 11 import paths, storage backends, tools and testing
+  - `dur_model`: everything is a record committed to storage
+  - `dur_run`: one answered input as entries and tasks over time
+  - `dur_tasks`: `defineTask`: a resumable state machine with ownership
+  - `dur_inbox`: submitting to a busy conversation: steer / followUp / reject / write
+  - `dur_docs`: documents and watches
+  - `dur_storage`: one `commit(writes)` interface, four backends
+  - `dur_ext`: tools, sections, hooks, wraps, tasks
+- **env** (`figs11.py`):
+  - `env_arch`: the TypeScript client and the Rust daemon
+  - `env_split`: what runs where; results must match `NodeExecutionEnv` remotely
+  - `env_ssh`: host-key trust → platform detection → deployment → start
+  - `env_frames`: the sync line, then frames; requests and replies
+  - `env_session`: lazy start, heartbeats, restart after loss
+  - `env_exec`: shell choice, output window, spill files, cancellation
+  - `env_files`: ExecutionEnv file methods → the daemon's 17 file ops, handles, limits
+  - `env_watch`: `NodeFileWatcher` running next to the files
 
 Decks: diagrams with height/width ≥ 0.6 (tui_render, ca_session, ca_jsonl, …) use the `side` layout (two points beside the diagram) instead of `wide`, so they render at roughly 0.9× instead of 0.7×.
 
 ## Next batches
 
-Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5).
+Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5), chord, durable, env (batch 6).
 
-6. chord, durable, env  ← next
-7. protocol, client, server, telemetry, evals
+7. protocol, client, server, telemetry, evals  ← next
 
 To promote a package, add `deep_<pkg>.py` (same schema as `deep_agent.py`) and `figsN.py`, then set the status in `pkgmeta.py`.
 

@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------- package registry + version check
-import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm  # noqa
+import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env  # noqa
 PK = pkgmeta.load()
 PBY = {p['slug']: p for p in PK}
 assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
@@ -99,6 +99,30 @@ CAPTION = {
  'cm_types': ('公共类型与 @options 源码格式', 'Public types and the @options source format'),
  'cm_decl': ('从 JSON Schema 到 TypeScript 声明', 'From JSON Schema to TypeScript declarations'),
  'cm_pi': ('codemode 工具：嵌套调用、globals 与 store 条目', 'The codemode tool: nested calls, globals and store entries'),
+ 'chord_arch': ('chord 的模块、导入路径与 pi 中的使用者', 'chord modules, import paths and the user inside pi'),
+ 'chord_facets': ('一个 facet 代：setup、校验、连接、激活与释放', 'One facet generation: setup, validation, wiring, activation and release'),
+ 'chord_reload': ('reload(facets)：句柄不断开地替换实现', 'reload(facets): replacing implementations without breaking handles'),
+ 'chord_services': ('服务令牌、模式、稳定句柄与 Context', 'Service tokens, modes, stable handles and Context'),
+ 'chord_remote': ('跨进程服务：provider、transport 与 binding', 'Services across processes: provider, transport and binding'),
+ 'chord_state': ('复制状态：一次 change() 如何变成远端的新值', 'Replicated state: how one change() becomes a new value on the other side'),
+ 'chord_delta': ('Delta 的 7 种 op 与线上压缩', 'The seven delta ops and on-the-wire compression'),
+ 'chord_bundle': ('esbuild 打包、清单与校验后在 node:vm 中加载', 'Bundling with esbuild, the manifest, and verified loading in node:vm'),
+ 'dur_arch': ('durable 的模块、子路径与使用者', 'durable modules, subpaths and users'),
+ 'dur_model': ('概念模型：一切都是提交到存储里的记录', 'The model: everything is a record committed to storage'),
+ 'dur_run': ('回答一次输入：条目与任务按时间排开', 'One answered input, as entries and tasks over time'),
+ 'dur_tasks': ('Task：可恢复的状态机与所有权', 'Tasks: a resumable state machine with ownership'),
+ 'dur_inbox': ('会话忙时的提交：steer、followUp、reject 与 write', 'Submitting to a busy conversation: steer, followUp, reject and write'),
+ 'dur_docs': ('文档与观察：UI 需要的都是已提交的状态', 'Documents and watching: everything a UI needs is committed state'),
+ 'dur_storage': ('一个 commit(writes) 接口，四种存储后端', 'One commit(writes) interface, four storage backends'),
+ 'dur_ext': ('扩展：工具、提示词段、钩子、包装器与任务', 'Extensions: tools, sections, hooks, wraps and tasks'),
+ 'env_arch': ('TypeScript 客户端与 Rust 守护进程的模块', 'The modules of the TypeScript client and the Rust daemon'),
+ 'env_split': ('分工：结果要与远端的 NodeExecutionEnv 一致', 'The split of work: results must match NodeExecutionEnv on the remote machine'),
+ 'env_ssh': ('经 SSH 连上一台机器：信任、探测、部署与启动', 'Reaching a machine over SSH: trust, detection, deployment and start'),
+ 'env_frames': ('线上格式：同步行之后只有帧', 'The wire format: after the sync line, only frames'),
+ 'env_session': ('一条连接的一生：懒启动、心跳与丢失后重启', 'The life of a connection: lazy start, heartbeats and restart after loss'),
+ 'env_exec': ('exec：命令、输出窗口、溢出文件与取消', 'exec: commands, output windows, spill files and cancellation'),
+ 'env_files': ('ExecutionEnv 的文件方法与守护进程的 17 个文件 op', "ExecutionEnv file methods and the daemon's 17 file ops"),
+ 'env_watch': ('文件监视：在文件旁边运行的 NodeFileWatcher', 'Watching: NodeFileWatcher running next to the files'),
 }
 assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
 
