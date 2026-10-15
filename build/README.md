@@ -6,13 +6,14 @@ fact and link is computed from the source at the release tag `v1.1.0`.
 
 - Output: `/workspace/pi-site/` (open `index.html`; it works offline over `file://`). The zip is `/workspace/pi-site.zip`.
 - Plan, information architecture and package status: [PLAN.md](PLAN.md). The rendered version is `roadmap/index.html`.
+- Status: all 14 packages covered, 31 pages, 125 diagrams.
 - Build: `python3 build.py`. Verify: `python3 shoot2.py <shots-dir>`.
 
 | file | role |
 |---|---|
 | `build.py` | multi-page generator: facts and assertions, chrome (top bar, package switcher, breadcrumbs), all pages and decks, font subsetting |
 | `content.py` | the 12 first-edition sections (now spread over the hub and package pages) |
-| `deep_agent.py`, `deep_ai.py`, `deep_ca.py`, `deep_tui.py`, `deep_mcp.py`, `deep_cm.py`, `deep_chord.py`, `deep_durable.py`, `deep_env.py`, `deep_protocol.py`, `deep_client.py`, `deep_server.py` | agent-core, pi-ai, coding-agent, tui, mcp, codemode, chord, durable, env, protocol, client and server deep-dive content |
+| `deep_agent.py`, `deep_ai.py`, `deep_ca.py`, `deep_tui.py`, `deep_mcp.py`, `deep_cm.py`, `deep_chord.py`, `deep_durable.py`, `deep_env.py`, `deep_protocol.py`, `deep_client.py`, `deep_server.py`, `deep_telemetry.py`, `deep_evals.py` | deep-dive content for all 14 packages: agent-core, pi-ai, coding-agent, tui, mcp, codemode, chord, durable, env, protocol, client, server, telemetry and evals |
 | `pkgmeta.py` | package registry: status, grouping, template; the facts come from package.json |
 | `svgkit.py`, `figkit.py` | diagram toolkit, plus a strict lint for overlaps, crossings and overflow |
 | `figs.py`, `figs2.py` | first-edition diagrams |
@@ -21,6 +22,7 @@ fact and link is computed from the source at the release tag `v1.1.0`.
 | `figs7.py`, `figs8.py` | mcp (`mcp_*`) and codemode (`cm_*`) diagrams; facts parsed from the v1.1.0 source |
 | `figs9.py`, `figs10.py`, `figs11.py` | chord (`chord_*`), durable (`dur_*`) and env (`env_*`) diagrams; facts parsed from the v1.1.0 source, including env's Rust daemon |
 | `figs12.py`, `figs13.py`, `figs14.py` | protocol (`proto_*`), client (`cli_*`) and server (`srv_*`) diagrams; facts asserted against the v1.1.0 source of all three packages and coding-agent's `experimental/` users |
+| `figs15.py`, `figs16.py` | telemetry (`tel_*`) and evals (`ev_*`) diagrams; facts asserted against the v1.1.0 source (evals' report example is computed with the report.ts rules) |
 | `lintp.py` | `python3 lintp.py <prefix> <modules…>`: lint just the diagrams with that key prefix |
 | `slides.py` | deck renderer, used for the main deck and the per-package decks |
 | `shoot2.py` | link check plus a headless Chromium matrix (light/dark × 1440/1920/390 × zh/EN) |

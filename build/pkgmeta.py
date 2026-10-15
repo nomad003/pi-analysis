@@ -12,14 +12,14 @@ PKGS = [
  ('tui',          'tui',          'tui',    'done',    '差分渲染的终端 UI 库', None, 'core'),
  ('mcp',          'mcp',          'ext',    'done',    '独立的 Model Context Protocol 客户端', None, 'capabilities'),
  ('codemode',     'codemode',     'ext',    'done',    '沙箱化 JavaScript 执行：唯一能力是调用注入的工具', None, 'capabilities'),
- ('telemetry',    'telemetry',    'infra',  'planned', '与厂商无关的遥测契约与类型化 schema 工具', None, 'capabilities'),
+ ('telemetry',    'telemetry',    'infra',  'done'   , '与厂商无关的遥测契约与类型化 schema 工具', None, 'capabilities'),
  ('chord',        'chord',        'infra',  'done'   , '应用组合运行时：服务、复制状态、RPC 与插件', None, 'runtime'),
  ('durable',      'durable',      'infra',  'done'   , '持久化的会话、任务与文档运行时', None, 'runtime'),
  ('env',          'env',          'infra',  'done'   , 'Pi Durable 的远程执行环境（经 SSH 部署的小型守护进程）', None, 'runtime'),
  ('protocol',     'protocol',     'modes',  'done'   , '远程 pi 会话的传输无关 CBOR 协议', None, 'remote'),
  ('client',       'client',       'modes',  'done'   , '基于分帧 CBOR 的远程 pi 会话客户端', None, 'remote'),
  ('server',       'server',       'modes',  'done'   , '实验性的 pi 服务端', None, 'remote'),
- ('evals',        'evals',        'infra',  'planned', '私有包：评测套件（Docker 化任务）', 'Private package: evaluation suites (dockerised tasks)', 'tooling'),
+ ('evals',        'evals',        'infra',  'done',    '私有包：行为评测与成对的文档提升对比（Docker 隔离）', 'Private package: behavioural evals and paired documentation-lift comparisons (Docker-isolated)', 'tooling'),
 ]
 GROUP_NAME = {'core': ('核心栈', 'Core stack'), 'capabilities': ('能力包', 'Capabilities'), 'runtime': ('持久化与运行时', 'Durable runtime'),
               'remote': ('远程会话', 'Remote sessions'), 'tooling': ('工具链', 'Tooling')}

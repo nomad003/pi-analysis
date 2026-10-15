@@ -80,7 +80,7 @@ SRC_LOC = sum(s['src_loc'] for s in STATS); TEST_LOC = sum(s['test_loc'] for s i
 PKG_LAYER = {'coding-agent': 'coding', 'agent': 'agent', 'ai': 'ai', 'tui': 'tui'}
 
 # ---------------------------------------------------------------- package registry + version check
-import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env, deep_protocol, deep_client, deep_server  # noqa
+import pkgmeta, deep_agent, deep_ai, deep_ca, deep_tui, deep_mcp, deep_cm, deep_chord, deep_durable, deep_env, deep_protocol, deep_client, deep_server, deep_telemetry, deep_evals  # noqa
 PK = pkgmeta.load()
 PBY = {p['slug']: p for p in PK}
 assert {p['version'] for p in PK} == {VERSION}, ('package versions differ from', VERSION, {p['slug']: p['version'] for p in PK})
@@ -228,6 +228,22 @@ CAPTION = {
  'srv_release': ('附着结束的六种方式与唯一的释放路径', 'Six ways an attachment ends, and the one release path'),
  'srv_unix': ('Unix 监听器：私有绑定、硬链接发布、按身份清理', 'The Unix listener: private bind, hard-link publish, identity-checked cleanup'),
  'srv_errors': ('ServerError 的五个子类与 ./testing 工具', 'The five ServerError subclasses and the ./testing kit'),
+ 'tel_arch': ('pi-telemetry 的结构：契约、两个参考上下文与 ./testing', 'pi-telemetry: the contract, two reference contexts and ./testing'),
+ 'tel_model': ('span、属性、事件、状态，以及作为上下文的 TelemetrySpan', 'Spans, attributes, events, status, and TelemetrySpan as the context'),
+ 'tel_lifecycle': ('一次 startSpan()：进入回调、自动与显式状态、结束', 'One startSpan(): admission, automatic and explicit status, settlement'),
+ 'tel_contract': ('适配器契约的 9 条规则与 9 个一致性用例', 'The 9 adapter-contract rules and the 9 conformance cases'),
+ 'tel_memory': ('InMemoryTelemetryContext：id、结束序号与分离的快照', 'InMemoryTelemetryContext: ids, end sequence and detached snapshots'),
+ 'tel_schema': ('可序列化的 schema：span、属性、事件与规则', 'Serializable schemas: spans, attributes, events and rules'),
+ 'tel_typed': ('createTypedSpanStarter：编译期检查，运行时薄包装', 'createTypedSpanStarter: compile-time checks, a thin run-time wrapper'),
+ 'tel_pi': ('在 pi 里：pi-ai 传递 telemetryContext；分工与安全规则', 'In pi: pi-ai carries telemetryContext; ownership and security rules'),
+ 'ev_arch': ('pi-evals 的结构：运行器、评测定义与镜像构建', 'pi-evals: the runner, eval definitions and the image build'),
+ 'ev_suites': ('7 个评测：2 个 host 套件与 5 个文档提升套件', 'Seven evals: two host suites and five documentation-lift suites'),
+ 'ev_pipeline': ('一次 eval:docs：8 个步骤与 .eval/ 下的产物', 'One eval:docs run: eight steps and the artifacts under .eval/'),
+ 'ev_plan': ('createTaskPlan：用例 × 运行序号 × 两种变体，交替顺序', 'createTaskPlan: case × run × both variants, in alternating order'),
+ 'ev_docker': ('Dockerfile 的 5 个阶段与每个任务的 docker run', 'The five Dockerfile stages and the per-task docker run'),
+ 'ev_sandbox': ('三层防护：只读容器、root 自检、降权到 UID 65532', 'Three guards: a read-only container, root self-checks, a drop to UID 65532'),
+ 'ev_harness': ('runPiCodingAgent：一个用例的一次运行与两种变体的差别', 'runPiCodingAgent: one run of one case, and how the variants differ'),
+ 'ev_report': ('报告：结果分类、配对、比较与一个算出来的 report.txt', 'The report: outcomes, pairing, comparison and a computed report.txt'),
 }
 assert set(CAPTION) == set(FIGS), set(FIGS) ^ set(CAPTION)
 
@@ -293,7 +309,7 @@ def tests_of(pdir):
     for dp, dns, fns in os.walk(root):
         dns[:] = [x for x in dns if x not in ('node_modules', 'dist')]
         for f in fns:
-            if '.test.' in f and f.endswith(('.ts', '.tsx', '.mjs')):
+            if '.test.' in f and f.endswith(('.ts', '.tsx', '.mjs')) and not f.startswith('vitest.'):  # vitest.test.config.ts is config, not tests
                 fp = Path(dp) / f; txt = fp.read_text(errors='ignore')
                 out.append((fp.relative_to(SRC).as_posix(), len(TEST_RE.findall(txt))))
     return sorted(out, key=lambda x: (-x[1], x[0]))
@@ -426,7 +442,7 @@ def facts_row(p):
     st = STATS_BY.get(p['dir'], {})
     tests = tests_of(p['dir'])
     F = [(p['version'], ('版本', 'version')), (fmt(st.get('src_files', 0)), ('源文件', 'src files')), (fmt(st.get('src_loc', 0)), ('源码行', 'src LOC')),
-         (str(len(tests)), ('测试文件', 'test files')), (fmt(sum(c for _, c in tests)), ('测试用例', 'test cases')), (str(len(p['exports']) or 1), ('导出路径', 'export paths'))]
+         (str(len(tests)), ('测试文件', 'test files')), (fmt(sum(c for _, c in tests)), ('测试用例', 'test cases')), (str(len(p['exports']) or (0 if p['private'] else 1)), ('导出路径', 'export paths'))]  # a private package without exports has none
     return '<div class="facts">' + ''.join(f'<div class="fact"><div class="n">{n}</div><div class="k">{T(k)}</div></div>' for n, k in F) + '</div>'
 
 def deps_row(prefix, p):
@@ -848,6 +864,67 @@ def api_section_server(i, p):
         f"{r} 个导入路径。根入口 index.ts 用 `export *` 公开 {nm} 个模块里的 {nv} 个值和 {nt} 个类型：`Server`、六个错误类、`INTERNAL_SERVER_ERROR_MESSAGE`，其余是宿主与监听器的契约；`SessionRouter` 和 `ByteConnection` 不公开。Unix 传输在 `./unix`，测试工具在 `./testing`。",
         f"{r} import paths. The root index.ts uses `export *` to publish {nv} values and {nt} types from {nm} modules: `Server`, six error classes and `INTERNAL_SERVER_ERROR_MESSAGE`, the rest host and listener contracts; `SessionRouter` and `ByteConnection` stay private. The Unix transport lives in `./unix`, the testing kit in `./testing`."), extra)
 
+TEL_EXPORT_NOTES = {'.': ('契约类型、no-op 与内存上下文、schema 定义与类型化启动器', 'contract types, the no-op and in-memory contexts, schema definitions and typed starters'),
+                    './testing': ('与测试框架无关的适配器一致性套件（使用 node:assert）', 'the runner-independent adapter conformance suite (uses node:assert)')}
+TEL_KEY = [(['TelemetryContext', 'TelemetrySpan', 'SpanOptions', 'SpanStatus'], ('回调式的 span 契约', 'the callback span contract')),
+           (['NOOP_TELEMETRY_CONTEXT'], ('遥测关闭时的默认上下文', 'the default context when telemetry is off')),
+           (['InMemoryTelemetryContext', 'RecordedTelemetrySpan'], ('确定性的内存记录与快照', 'deterministic in-memory recording and snapshots')),
+           (['defineTelemetrySchema', 'TelemetrySchemaDefinition'], ('可序列化的 schema', 'serializable schemas')),
+           (['createTypedSpanStarter', 'TypedSpanStarter', 'SchemaTelemetrySpan'], ('按 schema 检查的 span 启动器', 'span starters checked against schemas'))]
+TEL_TEST_KEY = [('conformance.ts', ['createTelemetryAdapterConformance'], ('9 个一致性用例', 'the 9 conformance cases')),
+                ('types.ts', ['TelemetryAdapterFixture', 'TelemetryAdapterFixtureFactory', 'TelemetryAdapterConformanceCase'], ('fixture 与用例的类型', 'fixture and case types'))]
+def api_section_telemetry(i, p):
+    """index.ts declares most of its API itself and re-exports the two contexts: list both, line-linked."""
+    ix = 'packages/telemetry/src/index.ts'
+    rows, etbl = _exports_rows('telemetry', p, TEL_EXPORT_NOTES)
+    mods = [(ix, exports_of(ix))] + public_exports(ix)
+    tbl, nm, nv, nt = public_table(mods)
+    n_paths = len(rows)
+    extra = f'<h3 class="subh">{T(("子路径 ./testing", "Subpath ./testing"))}</h3>' + key_exports_table('packages/telemetry/src/testing/index.ts', 'packages/telemetry/src/testing/', TEL_TEST_KEY)
+    take = (f"{n_paths} 个导入路径。根入口 index.ts 自己声明了大部分 API，并从 noop.ts / memory.ts 再导出两个上下文：合计 {nv} 个值和 {nt} 个类型——值只有两个上下文与两个 schema 函数，其余全是类型（契约、schema 形状与推导工具）。",
+            f"{n_paths} import paths. The root index.ts declares most of the API itself and re-exports the two contexts from noop.ts / memory.ts: {nv} values and {nt} types in all — the values are just the two contexts and the two schema functions; everything else is a type (the contract, schema shapes and inference utilities).")
+    return sec_open(i, 'api', p['layer'], ('公共 API', 'Public API')) + f"""
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(take)}</p>
+{etbl}
+<h3 class="subh">{T(("常用导出", "Key exports"))}</h3>{public_key_table(mods, TEL_KEY)}{extra}
+<h3 class="subh">{T(("根入口的全部导出（按声明所在模块，逐行链接）", "Every root export, by declaring module (line-linked)"))}</h3>{tbl}
+<p class="note">{T(("由构建脚本扫描 index.ts 自身的 `export` 声明并展开 `export { … } from` 生成；每个符号链接到 v1.1.0 中的定义行。", "Generated at build time by scanning index.ts's own `export` declarations and expanding its `export { … } from` statements; each symbol links to its defining line at v1.1.0."))}</p>
+</section>"""
+
+EV_MODS = [('cli.ts', ('eval:docs 主程序（没有导出）', 'the eval:docs main program (no exports)')), ('plan.ts', ('任务计划', 'the task plan')), ('docker.ts', ('镜像与运行', 'images and runs')),
+           ('harness.ts', ('vitest-evals 适配器', 'the vitest-evals adapter')), ('report.ts', ('观测、配对与报告', 'observations, pairing and the report'))]
+EV_SCRIPT_NOTES = {'clean': ('删除 .eval/ 下的产物', 'delete the artifacts under .eval/'),
+                   'test': ('运行器自身的单元测试（vitest.test.config.ts）', "the runner's own unit tests (vitest.test.config.ts)"),
+                   'eval:host': ('在本机跑 host 评测', 'run host evals on this machine'),
+                   'eval:docs': ('在两个容器变体里成对运行 docs 评测并报告提升', 'run docs evals in pairs in both container variants and report lift'),
+                   'eval': ('先 eval:host，再 eval:docs；-- 之后的参数只给 eval:docs', 'eval:host, then eval:docs; flags after -- go to eval:docs only')}
+def api_section_evals(i, p):
+    """A private package: no exports map. Show the npm scripts and each src/ module's exports, line-linked."""
+    pj = 'packages/evals/package.json'
+    j = json.loads(read(pj))
+    assert j['private'] is True and 'exports' not in j
+    srows = ''.join(f'<tr><td><code>npm run {esc(k)}</code></td><td class="sym"><code>{esc(v)}</code></td><td class="col-role">{T(EV_SCRIPT_NOTES[k])}</td></tr>' for k, v in j['scripts'].items())
+    assert set(j['scripts']) == set(EV_SCRIPT_NOTES), j['scripts']
+    stbl = f'<div class="tbl"><table><thead><tr><th>{T(("脚本", "Script"))}</th><th>{T(("命令", "Command"))}</th><th class="col-role">{T(("用途", "Use"))}</th></tr></thead><tbody>{srows}</tbody></table></div><p class="note">{flink(pj, line_of(pj, r'"scripts"'), "package.json · scripts")}</p>'
+    mods = [('packages/evals/src/' + m, exports_of('packages/evals/src/' + m)) for m, _ in EV_MODS]
+    tbl, nm, nv, nt = public_table(mods)
+    take = (f"pi-evals 是私有包（`private: true`），没有 `exports`，不能被别的包导入；它的“API”是 5 个 npm 脚本。`src/` 的 {nm} 个模块之间共有 {nv} 个值导出和 {nt} 个类型导出，只给评测文件与运行器内部使用；评测文件只用 `createPiCodingAgentHarness`、`createPiDocumentationEvalHarness` 与 `DOCUMENTATION_EVAL_TOOLS`。",
+            f"pi-evals is a private package (`private: true`) with no `exports`, so nothing else can import it; its \"API\" is five npm scripts. Between them the {nm} modules in `src/` have {nv} value exports and {nt} type exports, used only by eval files and the runner itself; eval files use just `createPiCodingAgentHarness`, `createPiDocumentationEvalHarness` and `DOCUMENTATION_EVAL_TOOLS`.")
+    env = [('PI_PROVIDER / PI_MODEL', ('被测模型（也可用 --provider / --model）', 'the model under test (or --provider / --model)')),
+           ('PI_EVAL_RUNS_PER_VARIANT', ('每种变体的重复次数（或 --runs-per-variant）', 'repetitions per variant (or --runs-per-variant)')),
+           ('-t / --testNamePattern', ('按名字选用例', 'select cases by name')),
+           ('PI_EVAL_VARIANT', ('镜像里设置：without_docs / with_docs', 'set in the image: without_docs / with_docs')),
+           ('PI_EVAL_CONTAINER · PI_EVAL_SANDBOX_UID/GID', ('容器入口设置；docs 评测缺了就拒绝运行', 'set by the container; docs evals refuse to run without them'))]
+    erows = ''.join(f'<tr><td><code>{esc(k)}</code></td><td class="col-role">{T(d)}</td></tr>' for k, d in env)
+    etbl = f'<div class="tbl"><table><thead><tr><th>{T(("参数 / 环境变量", "Flag / environment"))}</th><th class="col-role">{T(("作用", "Effect"))}</th></tr></thead><tbody>{erows}</tbody></table></div>'
+    return sec_open(i, 'api', p['layer'], ('公共 API', 'Public API')) + f"""
+<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T(take)}</p>
+<h3 class="subh">{T(("npm 脚本", "npm scripts"))}</h3>{stbl}
+<h3 class="subh">{T(("参数与环境变量", "Flags and environment"))}</h3>{etbl}
+<h3 class="subh">{T(("src/ 各模块的导出（逐行链接）", "Exports of each src/ module (line-linked)"))}</h3>{tbl}
+<p class="note">{T(("由构建脚本扫描 src/ 下每个模块的 `export` 声明生成；每个符号链接到 v1.1.0 中的定义行。", "Generated at build time by scanning each src/ module's `export` declarations; each symbol links to its defining line at v1.1.0."))}</p>
+</section>"""
+
 def ext_section(i, layer, items):
     cards = ''.join(f'<div><b><code>{esc(k)}</code></b>{T(d)}</div>' for k, d in items)
     return sec_open(i, 'ext', layer, ('扩展点', 'Extension points')) + f'<div class="ext-list">{cards}</div></section>'
@@ -1016,7 +1093,7 @@ def build_hub(n_slides):
     hero = f'''<section class="hero" id="top"><div class="wrap"><div>
 <a class="eyebrow" href="{GH}/releases/tag/{REF}" target="_blank" rel="noopener"><b>{REF}</b>{T(SUBTITLE)} · {COMMIT_DATE[:10]}</a>
 <h1>{T(("图解 <grad>Pi Agent</grad>", "<grad>Pi Agent</grad>,<br>Illustrated"), cls="h1")}</h1>
-<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；每个包有自己的子页面——`coding-agent`、`agent-core`、`pi-ai`、`tui` 四个核心包，`mcp`、`codemode`、`chord`、`durable`、`env`，以及远程会话三件套 `protocol`、`client`、`server` 已完成深挖。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture; every package has its own page — the four core packages `coding-agent`, `agent-core`, `pi-ai` and `tui`, plus `mcp`, `codemode`, `chord`, `durable`, `env` and the remote-session trio `protocol`, `client` and `server`, are fully covered. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
+<p class="lead">{T((f"基于 Pi v{VERSION} 源码逐行核对的架构导读。总览页给出全局；全部 {FACTS['packages']} 个包都有自己的深挖子页面——四个核心包 `coding-agent`、`agent-core`、`pi-ai`、`tui`，能力包 `mcp`、`codemode`、`telemetry`，运行时 `chord`、`durable`、`env`，远程会话三件套 `protocol`、`client`、`server`，以及私有的评测包 `evals`。共 {len(FIGS)} 张手绘架构图，每个结论都链接到 `{REF}` 标签中的具体代码行。", f"An architecture walkthrough checked line by line against the Pi v{VERSION} source. This overview gives the big picture, and all {FACTS['packages']} packages have their own deep-dive page — the four core packages `coding-agent`, `agent-core`, `pi-ai` and `tui`; the capabilities `mcp`, `codemode` and `telemetry`; the runtime `chord`, `durable` and `env`; the remote-session trio `protocol`, `client` and `server`; and the private `evals` package. {len(FIGS)} hand-laid diagrams, and every claim links to the exact lines at tag `{REF}`."))}</p>
 <div class="cta"><a class="btn primary" href="#pkgs">{T(("浏览 14 个包", "Browse the 14 packages"))} →</a><a class="btn" href="{P}slides.html">{ICON["play"].replace("<svg", "<svg width=15 height=15")}{T((f"演示模式 · {n_slides} 页", f"Presentation · {n_slides} slides"))}</a></div>
 <div class="stats">{stats}</div></div>
 {stack}
@@ -1029,19 +1106,24 @@ def build_roadmap():
     P = '{P}'
     rows = ''.join(f'<tr><td><a class="chip L-{p["layer"]}" href="{pkg_href(P, p["slug"])}">{p["slug"]}</a></td><td><code>{p["npm"]}</code></td><td>{status_dot(p["status"])}</td><td class="col-role">{T(p["desc"])}</td></tr>' for p in PK)
     cnt = {s: sum(1 for p in PK if p['status'] == s) for s in ('done', 'partial', 'planned')}
-    plan = f'''<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"信息架构 = 一个总览页 + 每个包一个子页面，全部使用同一个包模板。当前 {cnt['done']} 个完成、{cnt['partial']} 个部分完成、{cnt['planned']} 个计划中（已有自动生成的占位页，链接全部有效）。", f"Information architecture = one overview page + one page per package, all following the same package template. Currently {cnt['done']} done, {cnt['partial']} partial and {cnt['planned']} planned (each already has a generated placeholder page, so every link works)."))}</p>
+    plan = f'''<p class="takeaway"><span class="tl">{T(("一句话结论", "Takeaway"))}</span>{T((f"信息架构 = 一个总览页 + 每个包一个子页面，全部使用同一个包模板。计划已完成：全部 {cnt['done']} 个包都已深挖（9 项模板齐全、各有 10 页演示），全站 {len(FIGS)} 张图。", f"Information architecture = one overview page + one page per package, all following the same package template. The plan is complete: all {cnt['done']} packages are fully covered (all nine template parts, a 10-slide deck each), {len(FIGS)} diagrams site-wide.") if cnt['done'] == len(PK) else (f"信息架构 = 一个总览页 + 每个包一个子页面，全部使用同一个包模板。当前 {cnt['done']} 个完成、{cnt['partial']} 个部分完成、{cnt['planned']} 个计划中（已有自动生成的占位页，链接全部有效）。", f"Information architecture = one overview page + one page per package, all following the same package template. Currently {cnt['done']} done, {cnt['partial']} partial and {cnt['planned']} planned (each already has a generated placeholder page, so every link works)."))}</p>
 <div class="tbl"><table><thead><tr><th>{T(("包", "Package"))}</th><th>npm</th><th>{T(("状态", "Status"))}</th><th class="col-role">{T(("定位", "Role"))}</th></tr></thead><tbody>{rows}</tbody></table></div>'''
     tmpl = f'<p class="note">{T(("每个包页面按以下 9 项组织；完成的包页面全部覆盖，占位页显示进度。", "Every package page is organised by these nine parts; finished pages cover all of them, placeholders show progress."))}</p>' + checklist({k for k, *_ in pkgmeta.TEMPLATE})
-    nxt = [(('第 8 批（下一批）：telemetry / evals', 'Batch 8 (next): telemetry, evals'), ('与厂商无关的遥测契约与类型化 schema；私有的评测套件（Docker 化任务）。', 'Vendor-neutral telemetry contracts and typed schemas; the private evaluation suites (dockerised tasks).'))]
+    assert all(p['status'] == 'done' for p in PK), [p['slug'] for p in PK if p['status'] != 'done']
+    nxt = [(('计划已完成', 'Plan complete'), (f'8 批之后，全部 {len(PK)} 个包都已按同一模板完成深挖：{len(FIGS)} 张手绘图（第一版 12 张 + 新增 {len(FIGS) - 12} 张），{len(PK)} 套包演示文稿。没有剩余的批次；之后的工作是随新版本更新。', f'After eight batches all {len(PK)} packages are covered with the same template: {len(FIGS)} hand-laid diagrams (12 from the first edition + {len(FIGS) - 12} new), and {len(PK)} package decks. No batches remain; future work is keeping up with new releases.'))]
     nxt_html = '<ol class="prose">' + ''.join(f'<li><b>{T(a)}</b> — {T(b)}</li>' for a, b in nxt) + '</ol>'
     # site changelog
     site_cl = [
-        (('本次更新：protocol、client 与 server 完成（第 7 批）', 'This update: protocol, client and server done (batch 7)'), [('protocol 深挖：新增 8 张图（三层结构、一条消息的往返、8 种消息、RpcTarget 路由、一条连接上的消息顺序、分帧、严格的 CBOR 子集、与 chord 的分界）。', 'protocol deep dive: 8 new diagrams (three layers, one message there and back, the 8 messages, RpcTarget routes, message order on one connection, framing, the strict CBOR subset, the boundary with chord).'),
+        (('本次更新：telemetry 与 evals 完成（第 8 批），全部 14 个包完成', 'This update: telemetry and evals done (batch 8) — all 14 packages covered'), [('telemetry 深挖：新增 8 张图（契约与两个参考上下文、span 模型、一次 startSpan()、适配器契约与 9 个一致性用例、InMemoryTelemetryContext、可序列化 schema、类型化启动器、在 pi 中的使用）。', 'telemetry deep dive: 8 new diagrams (the contract and two reference contexts, the span model, one startSpan(), the adapter contract and its 9 conformance cases, InMemoryTelemetryContext, serializable schemas, typed starters, how pi uses it).'),
+                                     ('evals 深挖：新增 8 张图（三个目录、7 个评测、一次 eval:docs、任务计划、Dockerfile 的 5 个阶段、三层沙箱、一次 harness 运行、报告与一个按 report.ts 规则算出的 report.txt）。', 'evals deep dive: 8 new diagrams (three directories, the seven evals, one eval:docs run, the task plan, the five Dockerfile stages, the three-layer sandbox, one harness run, the report with a report.txt computed by the report.ts rules).'),
+                                     ('两个包各有 10 页的演示文稿；evals 是私有包、没有 exports，公共 API 一节改为 npm 脚本、参数与 src/ 各模块的逐行导出表。', 'A 10-slide deck for each package; evals is private with no exports, so its public-API section lists the npm scripts, flags and line-linked exports of each src/ module.'),
+                                     (f'路线图计划完成：全部 {len(PK)} 个包已深挖，全站合计 {len(FIGS)} 张图。', f'The roadmap plan is complete: all {len(PK)} packages covered, {len(FIGS)} diagrams site-wide.')]),
+        (('上次更新：protocol、client 与 server 完成（第 7 批）', 'Previous update: protocol, client and server done (batch 7)'), [('protocol 深挖：新增 8 张图（三层结构、一条消息的往返、8 种消息、RpcTarget 路由、一条连接上的消息顺序、分帧、严格的 CBOR 子集、与 chord 的分界）。', 'protocol deep dive: 8 new diagrams (three layers, one message there and back, the 8 messages, RpcTarget routes, message order on one connection, framing, the strict CBOR subset, the boundary with chord).'),
                                      ('client 深挖：新增 8 张图（模块、连接状态机、一个请求、服务订阅、附着与 Chord 适配器、字节传输与 Unix 写队列、本机发现、失败语义与恢复）。', 'client deep dive: 8 new diagrams (modules, the connection state machine, one request, service subscriptions, attachments and the Chord adapter, byte transports and the Unix write queue, local discovery, failure semantics and recovery).'),
                                      ('server 深挖：新增 8 张图（模块、ServerHost 契约、连接阶段与握手、请求处理、SessionRouter、附着的释放、Unix 监听器、错误码与测试工具）。', 'server deep dive: 8 new diagrams (modules, the ServerHost contract, connection stages and the handshake, request handling, SessionRouter, attachment release, the Unix listener, error codes and the testing kit).'),
-                                     (f'三个包各有 10 页的演示文稿；protocol 与 server 的根入口用 `export *`，公共 API 表改为展开到声明所在的模块并逐行链接；全站合计 {len(FIGS)} 张图。', f'A 10-slide deck for each package; protocol and server use `export *` at the root, so their public-API tables expand to the declaring modules with line links; {len(FIGS)} diagrams site-wide.'),
+                                     ('三个包各有 10 页的演示文稿；protocol 与 server 的根入口用 `export *`，公共 API 表改为展开到声明所在的模块并逐行链接；当时全站合计 109 张图。', 'A 10-slide deck for each package; protocol and server use `export *` at the root, so their public-API tables expand to the declaring modules with line links; 109 diagrams site-wide at the time.'),
                                      ('telemetry 与 evals 顺延到第 8 批。', 'telemetry and evals move to batch 8.')]),
-        (('上次更新：chord、durable 与 env 完成（第 6 批）', 'Previous update: chord, durable and env done (batch 6)'), [('chord 深挖：新增 8 张图（模块、facet 生命周期、热重载、服务、远程服务、复制状态、增量与草稿、打包与加载）。', 'chord deep dive: 8 new diagrams (modules, the facet lifecycle, hot reload, services, remote services, replicated state, deltas and drafts, bundling and loading).'),
+        (('更早：chord、durable 与 env 完成（第 6 批）', 'Earlier: chord, durable and env done (batch 6)'), [('chord 深挖：新增 8 张图（模块、facet 生命周期、热重载、服务、远程服务、复制状态、增量与草稿、打包与加载）。', 'chord deep dive: 8 new diagrams (modules, the facet lifecycle, hot reload, services, remote services, replicated state, deltas and drafts, bundling and loading).'),
                                      ('durable 深挖：新增 8 张图（模块、数据模型、一次运行、任务、收件箱、文档、存储、扩展）。', 'durable deep dive: 8 new diagrams (modules, the data model, one run, tasks, the inbox, documents, storage, extensions).'),
                                      ('env 深挖：新增 8 张图（模块、TypeScript 与 Rust 的分工、SSH 部署、帧格式、一次连接、命令执行、文件操作、文件监视）。', 'env deep dive: 8 new diagrams (modules, the TypeScript / Rust split, SSH deployment, the frame format, one connection, command execution, file operations, file watching).'),
                                      ('三个包各有 10 页的演示文稿，公共 API 表按 index.ts 的导出自动生成；当时全站合计 85 张图。', 'A 10-slide deck for each package and public-API tables generated from the index.ts exports; 85 diagrams site-wide at the time.')]),
@@ -1162,6 +1244,8 @@ def main():
     n_pr = pkg_deck('protocol', deep_protocol)
     n_cl = pkg_deck('client', deep_client)
     n_sv = pkg_deck('server', deep_server)
+    n_te = pkg_deck('telemetry', deep_telemetry)
+    n_ev = pkg_deck('evals', deep_evals)
     build_deep('agent-core', deep_agent, [('sec', 'ac-arch'), ('api', 'api'), ('sec', 'ac-lifecycle'), ('v1', 'loop'), ('sec', 'ac-turn'), ('v1', 'toolexec'),
                ('sec', 'ac-parallel'), ('sec', 'ac-events'), ('sec', 'ac-queues'), ('sec', 'ac-proxy'), ('sec', 'ac-types'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
                api_section_agent, ('4 个测试文件覆盖循环（钩子顺序、队列、并行工具、截断）、Agent 生命周期、端到端与代理流。', 'Four test files cover the loop (hook order, queues, parallel tools, truncation), the Agent lifecycle, end-to-end runs and the proxy stream.'), n_ac)
@@ -1199,6 +1283,12 @@ def main():
     build_deep('server', deep_server, [('sec', 'srv-arch'), ('api', 'api'), ('sec', 'srv-host'), ('sec', 'srv-conn'), ('sec', 'srv-request'), ('sec', 'srv-router'),
                ('sec', 'srv-release'), ('sec', 'srv-unix'), ('sec', 'srv-errors'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
                api_section_server, ('六个测试文件：conformance.test.ts（20 个用例）用 ./testing 覆盖 Session 协议——多附着、过期路由、跨服务器请求、未知 / 有歧义的 Session、Harness 终止与关闭时的清理；protocol.test.ts 覆盖握手与分帧（分片、合并、截断）；server.test.ts 覆盖选项校验、并发启动、握手超时与关闭失败；unix*.test.ts 与 listener.test.ts 覆盖 socket 绑定、陈旧清理、身份检查，以及排在待发数据之后的最终错误帧。', 'Six test files: conformance.test.ts (20 cases) uses ./testing to cover the Session protocol: multiple attachments, stale routes, cross-server requests, unknown / ambiguous Sessions, Harness termination and shutdown cleanup; protocol.test.ts covers the handshake and framing (fragmented, coalesced, truncated); server.test.ts covers option checks, concurrent start, the handshake timeout and shutdown failures; unix*.test.ts and listener.test.ts cover socket binding, stale cleanup, identity checks, and a final error frame queued behind pending output.'), n_sv)
+    build_deep('telemetry', deep_telemetry, [('sec', 'tel-arch'), ('api', 'api'), ('sec', 'tel-model'), ('sec', 'tel-lifecycle'), ('sec', 'tel-contract'), ('sec', 'tel-memory'),
+               ('sec', 'tel-schema'), ('sec', 'tel-typed'), ('sec', 'tel-pi'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_telemetry, ('两个测试文件：conformance.test.ts 把 9 个一致性用例跑在 InMemoryTelemetryContext 上，并检查快照是分离的；telemetry.test.ts 覆盖 schema 的类型推导（9 处 @ts-expect-error）、多 schema 启动器的父子绑定与 NOOP 上下文。pi-ai 另有 telemetry-options.test.ts 检查 telemetryContext 在每条分派路径上不变。', 'Two test files: conformance.test.ts runs the 9 conformance cases against InMemoryTelemetryContext and checks that snapshots are detached; telemetry.test.ts covers schema type inference (9 @ts-expect-error lines), parent binding in multi-schema starters, and the NOOP context. pi-ai adds telemetry-options.test.ts, which checks that telemetryContext survives every dispatch path.'), n_te)
+    build_deep('evals', deep_evals, [('sec', 'ev-arch'), ('api', 'api'), ('sec', 'ev-suites'), ('sec', 'ev-pipeline'), ('sec', 'ev-plan'), ('sec', 'ev-docker'),
+               ('sec', 'ev-sandbox'), ('sec', 'ev-harness'), ('sec', 'ev-report'), ('ext', 'ext'), ('tests', 'tests'), ('xref', 'xref')],
+               api_section_evals, ('六个测试文件只测运行器本身，不调用模型：report.test.ts（12 个用例）覆盖每一种结果分类与会话快照；harness.test.ts（10）覆盖隔离环境、提示词校验与剪掉 <docs>；configured-runtime.test.ts（8）覆盖评分器读取的运行时状态；acme-server.test.ts（5）覆盖夹具服务器；comparison.test.ts（4）覆盖配对、阻塞与报告格式；plan.test.ts（4）覆盖任务展开与身份校验。评测本身（*.eval.ts）不计入。', 'Six test files test only the runner and never call a model: report.test.ts (12 cases) covers every outcome classification and the session snapshot; harness.test.ts (10) covers the isolated environment, prompt verification and cutting <docs>; configured-runtime.test.ts (8) covers the runtime state judges read; acme-server.test.ts (5) covers the fixture server; comparison.test.ts (4) covers pairing, blocking and report formatting; plan.test.ts (4) covers task expansion and identity checks. The evals themselves (*.eval.ts) are not counted.'), n_ev)
     for p in PK:
         if p['status'] == 'planned': build_stub(p['slug'])
     render_deck('slides.html')

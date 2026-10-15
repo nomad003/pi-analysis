@@ -11,6 +11,8 @@
  "packages/protocol/slides.html",
  "packages/client/slides.html",
  "packages/server/slides.html",
+ "packages/telemetry/slides.html",
+ "packages/evals/slides.html",
  "packages/agent-core/index.html",
  "packages/pi-ai/index.html",
  "packages/coding-agent/index.html",

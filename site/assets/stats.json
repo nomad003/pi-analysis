@@ -136,14 +136,14 @@
   "tui": "done",
   "mcp": "done",
   "codemode": "done",
-  "telemetry": "planned",
+  "telemetry": "done",
   "chord": "done",
   "durable": "done",
   "env": "done",
   "protocol": "done",
   "client": "done",
   "server": "done",
-  "evals": "planned"
+  "evals": "done"
  },
  "extension_events": [
   "after_provider_response",

@@ -49,14 +49,14 @@ Statuses:
 | [tui](../pi-site/packages/tui/index.html) | `@earendil-works/pi-tui` | `packages/tui` | **done** | — | Terminal User Interface library with differential rendering for efficient text-based applications |
 | [mcp](../pi-site/packages/mcp/index.html) | `@earendil-works/pi-mcp` | `packages/mcp` | **done** | — | Standalone Model Context Protocol client for pi and other applications |
 | [codemode](../pi-site/packages/codemode/index.html) | `@earendil-works/pi-codemode` | `packages/codemode` | **done** | — | Sandboxed JavaScript execution where the only capability is calling injected tools |
-| [telemetry](../pi-site/packages/telemetry/index.html) | `@earendil-works/pi-telemetry` | `packages/telemetry` | **planned** | — | Vendor-neutral telemetry contracts and typed schema utilities for pi |
+| [telemetry](../pi-site/packages/telemetry/index.html) | `@earendil-works/pi-telemetry` | `packages/telemetry` | **done** | — | Vendor-neutral telemetry contracts and typed schema utilities for pi |
 | [chord](../pi-site/packages/chord/index.html) | `@earendil-works/chord` | `packages/chord` | **done** | — | Application composition runtime for services, replicated state, RPC, and plugins |
 | [durable](../pi-site/packages/durable/index.html) | `@earendil-works/pi-durable` | `packages/durable` | **done** | chord, pi-ai | Durable conversation, task, and document runtime for Pi |
 | [env](../pi-site/packages/env/index.html) | `@earendil-works/pi-env` | `packages/env` | **done** | chord, durable | Remote execution environments for Pi Durable: a small daemon deployed over SSH and its ExecutionEnv client |
 | [protocol](../pi-site/packages/protocol/index.html) | `@earendil-works/pi-protocol` | `packages/protocol` | **done** | chord | Transport-neutral CBOR protocol for remote pi sessions |
 | [client](../pi-site/packages/client/index.html) | `@earendil-works/pi-client` | `packages/client` | **done** | chord, protocol | Transport-neutral client for remote pi sessions over framed CBOR bytes |
 | [server](../pi-site/packages/server/index.html) | `@earendil-works/pi-server` | `packages/server` | **done** | chord, protocol | experimental server package for pi |
-| [evals](../pi-site/packages/evals/index.html) | `@earendil-works/pi-evals` | `packages/evals` | **planned** | — | Private package: evaluation suites (dockerised tasks) |
+| [evals](../pi-site/packages/evals/index.html) | `@earendil-works/pi-evals` | `packages/evals` | **done** | coding-agent, pi-ai (dev) | Private package: behavioural evals and paired documentation-lift comparisons (Docker-isolated) |
 
 ## Per-package template
 
@@ -80,7 +80,7 @@ Statuses:
 | session, compaction, extensions, modes | packages/coding-agent |
 | tui | packages/tui |
 
-Every first-edition diagram is kept. There are 12 first-edition diagrams and 97 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode, 24 for chord/durable/env, 24 for protocol/client/server), 109 in total.
+Every first-edition diagram is kept. There are 12 first-edition diagrams and 113 new ones (16 for agent-core/pi-ai, 17 for coding-agent/tui, 16 for mcp/codemode, 24 for chord/durable/env, 24 for protocol/client/server, 16 for telemetry/evals), 125 in total. All 14 packages are covered.
 
 ## New diagrams
 
@@ -194,13 +194,32 @@ Every first-edition diagram is kept. There are 12 first-edition diagrams and 97 
   - `srv_unix`: private bind, hard-link publish, chmod, identity-checked cleanup (bind hash computed)
   - `srv_errors`: the five ServerError subclasses (parsed), the `./testing` kit, test counts
 
+- **telemetry** (`figs15.py`):
+  - `tel_arch`: index.ts contract, noop.ts, memory.ts, `./testing`; 4 value exports
+  - `tel_model`: spans, attributes, events, status; TelemetrySpan extends TelemetryContext (UML)
+  - `tel_lifecycle`: one `startSpan()`: admission, automatic and explicit status, settlement
+  - `tel_contract`: the 9 adapter-contract rules and the 9 conformance cases (parsed)
+  - `tel_memory`: InMemoryTelemetryContext ids, end sequence, detached snapshots
+  - `tel_schema`: serializable schema definitions (UML)
+  - `tel_typed`: `createTypedSpanStarter`: compile-time checks, thin runtime wrapper
+  - `tel_pi`: pi-ai carries `telemetryContext`; ownership and security rules
+- **evals** (`figs16.py`):
+  - `ev_arch`: `src/` runner, `evals/`, `docker/`, package.json scripts and devDependencies
+  - `ev_suites`: 2 host + 5 docs suites parsed from describeEval / it, judges per suite
+  - `ev_pipeline`: the 8 steps of `eval:docs` and the `.eval/` artifacts
+  - `ev_plan`: `createTaskPlan` worked example (2 cases × 3 runs → 12 tasks, alternating order)
+  - `ev_docker`: the 5 Dockerfile stages, `buildImages()`, the per-task `docker run`
+  - `ev_sandbox`: docker run → entrypoint.ts (root) → harness drop to UID 65532; what the model can see
+  - `ev_harness`: `runPiCodingAgent` steps, `promptAgent`, the documentation harness, system-prompt sections
+  - `ev_report`: outcomes → `resolvePair` → comparison + flags; a report.txt computed with the report.ts rules
+
 Decks: diagrams with height/width ≥ 0.6 (tui_render, ca_session, ca_jsonl, …) use the `side` layout (two points beside the diagram) instead of `wide`, so they render at roughly 0.9× instead of 0.7×.
 
 ## Next batches
 
-Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5), chord, durable, env (batch 6), protocol, client, server (batch 7).
+Done: agent-core, pi-ai (batches 1–2), coding-agent, tui (batches 3–4), mcp, codemode (batch 5), chord, durable, env (batch 6), protocol, client, server (batch 7), telemetry, evals (batch 8).
 
-8. telemetry, evals  ← next
+**Plan complete**: all 14 packages are covered, with 125 diagrams in total. No batches remain; future work is keeping up with new releases.
 
 To promote a package, add `deep_<pkg>.py` (same schema as `deep_agent.py`) and `figsN.py`, then set the status in `pkgmeta.py`.
 
